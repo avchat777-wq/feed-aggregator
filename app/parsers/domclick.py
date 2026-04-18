@@ -27,7 +27,9 @@ logger = logging.getLogger(__name__)
 FIELD_CANDIDATES: dict[str, list[str]] = {
     "id": [
         "id", "Id", "ID",
+        "flat_id", "FlatId", "flatId",          # domoplaner.ru
         "object_id", "objectId", "ObjectId",
+        "apartment_id", "ApartmentId",
     ],
     "type": [
         "type", "Type", "TYPE",
@@ -69,6 +71,7 @@ FIELD_CANDIDATES: dict[str, list[str]] = {
     "flat_number": [
         "flat_number", "FlatNumber", "flatNumber",
         "apartment_number", "ApartmentNumber",
+        "apartment", "Apartment",               # domoplaner.ru
         "number", "Number",
         "flat", "Flat",
         "apt", "Apt",
@@ -87,6 +90,7 @@ FIELD_CANDIDATES: dict[str, list[str]] = {
         "rooms_count", "RoomsCount",
         "rooms", "Rooms", "ROOMS",
         "room_count", "RoomCount",
+        "room", "Room",                         # domoplaner.ru (singular)
         "rooms_number", "RoomsNumber",
     ],
     "total_area": [
@@ -123,6 +127,7 @@ FIELD_CANDIDATES: dict[str, list[str]] = {
         "finishing", "Finishing",
         "repair", "Repair",
         "repair_type", "RepairType",
+        "renovation", "Renovation",             # domoplaner.ru
     ],
     "description": [
         "description", "Description",
@@ -161,6 +166,7 @@ SOLD_STATUSES = {
 
 # DomClick finish_type values → normalizer-friendly
 FINISH_TYPE_MAP = {
+    # English variants
     "WhiteBox": "rough",
     "Whitebox": "rough",
     "white_box": "rough",
@@ -171,6 +177,14 @@ FINISH_TYPE_MAP = {
     "clean_finish": "fine",
     "Turnkey": "turnkey",
     "turnkey": "turnkey",
+    # Russian variants (domoplaner.ru uses "renovation" field with Russian values)
+    "предчистовая": "rough",
+    "черновая": "without",
+    "без отделки": "without",
+    "чистовая": "fine",
+    "под ключ": "turnkey",
+    "отделка": "fine",
+    "с отделкой": "fine",
 }
 
 
@@ -186,16 +200,50 @@ class DomClickParser(BaseParser):
 
         try:
             root = etree.fromstring(content)
-        except etree.XMLSyntaxError as e:
-            self._log_error(f"Invalid XML: {e}")
-            return results
+        except etree.XMLSyntaxError:
+            # Try recovery parser for slightly broken feeds
+            try:
+                recover_parser = etree.XMLParser(recover=True)
+                root = etree.fromstring(content, parser=recover_parser)
+            except Exception as e:
+                self._log_error(f"Invalid XML (recovery failed): {e}")
+                return results
 
-        # Find object elements — try all known root/object patterns
+        # Strategy A: domoplaner.ru — <complexes><complex><flat> structure
+        # JK name is on the <complex> level, flats are children
+        complexes = root.findall(".//complex") or root.findall(".//Complex")
+        if complexes:
+            for complex_elem in complexes:
+                jk_name = self._get_complex_name(complex_elem)
+                for flat_tag in ("flat", "Flat", "object", "Object", "offer", "Offer"):
+                    flats = complex_elem.findall(flat_tag)
+                    if flats:
+                        for elem in flats:
+                            try:
+                                obj = self._parse_object(elem, jk_name_override=jk_name)
+                                if self._is_valid(obj):
+                                    results.append(obj)
+                                else:
+                                    self._log_error(
+                                        f"Skipped flat id={self._get_field(elem, 'id')}: "
+                                        "missing required fields"
+                                    )
+                            except Exception as e:
+                                self._log_error(f"Error parsing flat: {e}")
+                        break
+            if results:
+                logger.info(
+                    f"[{self.source_name}] DomClick parser (complexes): "
+                    f"{len(results)} objects parsed"
+                )
+                return results
+
+        # Strategy B: flat object elements without complex wrapper
         objects = self._find_objects(root)
         if not objects:
             self._log_error(
                 f"No object elements found. Root tag: <{root.tag}>. "
-                "Expected <feed><object> or <objects><object>."
+                "Expected <feed><object>, <objects><object>, or <complexes><complex><flat>."
             )
             return results
 
@@ -207,7 +255,7 @@ class DomClickParser(BaseParser):
                 else:
                     self._log_error(
                         f"Skipped object id={self._get_field(elem, 'id')}: "
-                        "missing required fields (price, area, floor, rooms)"
+                        "missing required fields (price, area, floor)"
                     )
             except Exception as e:
                 self._log_error(f"Error parsing object: {e}")
@@ -217,8 +265,25 @@ class DomClickParser(BaseParser):
 
     # ── Finding objects ─────────────────────────────────────────────────────
 
+    def _get_complex_name(self, complex_elem) -> str:
+        """Extract JK name from a <complex> element."""
+        for tag in (
+            "name", "Name", "NAME",
+            "complex_name", "ComplexName",
+            "jk_name", "jk", "JK",
+            "title", "Title",
+            "newbuilding", "NewBuilding",
+        ):
+            el = complex_elem.find(tag)
+            if el is not None and el.text:
+                return el.text.strip()
+            val = complex_elem.get(tag)
+            if val:
+                return val.strip()
+        return ""
+
     def _find_objects(self, root) -> list:
-        """Try multiple strategies to locate <object> elements."""
+        """Try multiple strategies to locate flat/object elements (non-complex feeds)."""
         # Strategy 1: direct children named 'object' or 'Object'
         candidates = root.findall("object") or root.findall("Object")
         if candidates:
@@ -229,8 +294,7 @@ class DomClickParser(BaseParser):
         if candidates:
             return candidates
 
-        # Strategy 3: maybe root IS the <objects> container
-        # Try 'offer', 'Offer', 'item', 'Item', 'flat', 'Flat', 'apartment'
+        # Strategy 3: flat, offer, item variants
         for tag in ("offer", "Offer", "item", "Item", "flat", "Flat", "apartment", "Apartment"):
             candidates = root.findall(f".//{tag}")
             if candidates:
@@ -240,12 +304,12 @@ class DomClickParser(BaseParser):
 
     # ── Per-object parsing ──────────────────────────────────────────────────
 
-    def _parse_object(self, elem) -> RawObject:
+    def _parse_object(self, elem, jk_name_override: str = "") -> RawObject:
         obj = RawObject()
         g = lambda field: self._get_field(elem, field)
 
         obj.source_object_id = g("id")
-        obj.jk_name         = g("jk_name")
+        obj.jk_name         = jk_name_override or g("jk_name")
         obj.jk_id_cian      = g("jk_id") or None
         obj.house_name      = g("house_name") or None
         obj.section_number  = g("section") or None
