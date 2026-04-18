@@ -209,7 +209,11 @@ class DomClickParser(BaseParser):
                 self._log_error(f"Invalid XML (recovery failed): {e}")
                 return results
 
-        # Strategy A: domoplaner.ru — <complexes><complex><flat> structure
+        # Try to extract JK name from root element attributes or child tags
+        # (handles <complexes name="ЖК Название"> or <complexes><name>...</name>)
+        root_jk_name = self._get_complex_name(root)
+
+        # Strategy A: <complexes><complex><flat> structure
         # JK name is on the <complex> level, flats are children
         complexes = root.findall(".//complex") or root.findall(".//Complex")
         if complexes:
@@ -239,6 +243,12 @@ class DomClickParser(BaseParser):
                 return results
 
         # Strategy B: flat object elements without complex wrapper
+        # JK name fallback: root element → source name
+        fallback_jk = (
+            root_jk_name
+            or self.source_config.get("name", "")
+        )
+
         objects = self._find_objects(root)
         if not objects:
             self._log_error(
@@ -249,7 +259,7 @@ class DomClickParser(BaseParser):
 
         for elem in objects:
             try:
-                obj = self._parse_object(elem)
+                obj = self._parse_object(elem, jk_name_override=fallback_jk)
                 if self._is_valid(obj):
                     results.append(obj)
                 else:
