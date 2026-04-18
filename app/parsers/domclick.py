@@ -218,28 +218,64 @@ class DomClickParser(BaseParser):
         # (handles <complexes name="ЖК Название"> or <complexes><name>...</name>)
         root_jk_name = self._get_complex_name(root)
 
-        # Strategy A: <complexes><complex><flat> structure
-        # JK name is on the <complex> level, flats are children
+        # Strategy A: <complexes><complex>[<buildings><building>]<flat> structure
+        # Supports both shallow (complex → flat) and deep (complex → building → flat).
+        # JK name comes from <complex/name>, house name from <building/name>.
         complexes = root.findall(".//complex") or root.findall(".//Complex")
         if complexes:
             for complex_elem in complexes:
                 jk_name = self._get_complex_name(complex_elem)
-                for flat_tag in ("flat", "Flat", "object", "Object", "offer", "Offer"):
-                    flats = complex_elem.findall(flat_tag)
-                    if flats:
-                        for elem in flats:
-                            try:
-                                obj = self._parse_object(elem, jk_name_override=jk_name)
-                                if self._is_valid(obj):
-                                    results.append(obj)
-                                else:
-                                    self._log_error(
-                                        f"Skipped flat id={self._get_field(elem, 'id')}: "
-                                        "missing required fields"
-                                    )
-                            except Exception as e:
-                                self._log_error(f"Error parsing flat: {e}")
-                        break
+
+                # Check for intermediate <building> layer
+                # (domoplaner structure: complex → buildings → building → flats → flat)
+                buildings = (
+                    complex_elem.findall(".//building") or
+                    complex_elem.findall(".//Building")
+                )
+                if buildings:
+                    for building_elem in buildings:
+                        house_name = self._get_building_name(building_elem)
+                        for flat_tag in ("flat", "Flat", "object", "Object", "offer", "Offer"):
+                            flats = (building_elem.findall(flat_tag) or
+                                     building_elem.findall(f".//{flat_tag}"))
+                            if flats:
+                                for elem in flats:
+                                    try:
+                                        obj = self._parse_object(
+                                            elem,
+                                            jk_name_override=jk_name,
+                                            house_name_override=house_name,
+                                        )
+                                        if self._is_valid(obj):
+                                            results.append(obj)
+                                        else:
+                                            self._log_error(
+                                                f"Skipped flat id={self._get_field(elem, 'id')}: "
+                                                "missing required fields"
+                                            )
+                                    except Exception as e:
+                                        self._log_error(f"Error parsing flat: {e}")
+                                break
+                else:
+                    # Shallow: complex → flat (no building wrapper)
+                    for flat_tag in ("flat", "Flat", "object", "Object", "offer", "Offer"):
+                        flats = (complex_elem.findall(flat_tag) or
+                                 complex_elem.findall(f".//{flat_tag}"))
+                        if flats:
+                            for elem in flats:
+                                try:
+                                    obj = self._parse_object(elem, jk_name_override=jk_name)
+                                    if self._is_valid(obj):
+                                        results.append(obj)
+                                    else:
+                                        self._log_error(
+                                            f"Skipped flat id={self._get_field(elem, 'id')}: "
+                                            "missing required fields"
+                                        )
+                                except Exception as e:
+                                    self._log_error(f"Error parsing flat: {e}")
+                            break
+
             if results:
                 logger.info(
                     f"[{self.source_name}] DomClick parser (complexes): "
@@ -302,6 +338,25 @@ class DomClickParser(BaseParser):
                 return val.strip()
         return ""
 
+    def _get_building_name(self, building_elem) -> str:
+        """Extract house/building name from a <building> element."""
+        for tag in (
+            "name", "Name", "NAME",
+            "building_name", "BuildingName",
+            "liter", "Liter",
+            "corpus", "Corpus",
+            "house_name", "HouseName",
+            "title", "Title",
+            "number", "Number",
+        ):
+            el = building_elem.find(tag)
+            if el is not None and el.text:
+                return el.text.strip()
+            val = building_elem.get(tag)
+            if val:
+                return val.strip()
+        return ""
+
     def _find_objects(self, root) -> list:
         """Try multiple strategies to locate flat/object elements (non-complex feeds)."""
         # Strategy 1: direct children named 'object' or 'Object'
@@ -324,7 +379,8 @@ class DomClickParser(BaseParser):
 
     # ── Per-object parsing ──────────────────────────────────────────────────
 
-    def _parse_object(self, elem, jk_name_override: str = "") -> RawObject:
+    def _parse_object(self, elem, jk_name_override: str = "",
+                       house_name_override: str = "") -> RawObject:
         obj = RawObject()
         g = lambda field: self._get_field(elem, field)
 
@@ -333,7 +389,7 @@ class DomClickParser(BaseParser):
         # (override is used when objects live inside <complex> that carries the JK name)
         obj.jk_name         = g("jk_name") or jk_name_override
         obj.jk_id_cian      = g("jk_id") or None
-        obj.house_name      = g("house_name") or None
+        obj.house_name      = g("house_name") or house_name_override or None
         obj.section_number  = g("section") or None
         obj.flat_number     = g("flat_number") or obj.source_object_id
         obj.floor           = g("floor")
