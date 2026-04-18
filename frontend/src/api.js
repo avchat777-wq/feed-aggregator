@@ -1,6 +1,6 @@
 import axios from 'axios'
 
-const api = axios.create({ baseURL: '' })
+const api = axios.create({ baseURL: '/api' })
 
 // Add auth token to requests
 api.interceptors.request.use((config) => {
