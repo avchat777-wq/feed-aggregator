@@ -384,8 +384,43 @@ function TestResultModal({ result, onClose }) {
 
 // ── Raw XML tags modal ────────────────────────────────────────────────────────
 
+function ContextBlock({ label, info }) {
+  if (!info) return null;
+  const hasAttrs = info.attrs && Object.keys(info.attrs).length > 0;
+  const hasChildren = info.direct_text_children && Object.keys(info.direct_text_children).length > 0;
+  if (!hasAttrs && !hasChildren) return (
+    <div className="mb-2 text-xs text-gray-400 italic">
+      &lt;{info.tag}&gt; — атрибутов и текстовых дочерних тегов не найдено
+    </div>
+  );
+  return (
+    <div className="mb-3">
+      <div className="text-xs font-semibold text-gray-500 mb-1">
+        &lt;{info.tag}&gt;
+      </div>
+      {hasAttrs && Object.entries(info.attrs).map(([k, v]) => (
+        <div key={k} className="flex gap-2 text-xs py-0.5">
+          <span className="font-mono text-purple-700 w-40 shrink-0">{info.tag}[@{k}]</span>
+          <span className="text-gray-700">{v}</span>
+        </div>
+      ))}
+      {hasChildren && Object.entries(info.direct_text_children).map(([k, v]) => (
+        <div key={k} className="flex gap-2 text-xs py-0.5">
+          <span className="font-mono text-green-700 w-40 shrink-0">{info.tag}/{k}</span>
+          <span className="text-gray-700">{v}</span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 function RawTagsModal({ result, onClose }) {
   if (!result) return null;
+  const hasParentCtx = result.parent_context && result.parent_context.length > 0;
+  const rootHasData = result.root_info &&
+    (Object.keys(result.root_info.attrs || {}).length > 0 ||
+     Object.keys(result.root_info.direct_text_children || {}).length > 0);
+
   return (
     <div className="fixed inset-0 bg-black bg-opacity-40 flex items-center justify-center z-50">
       <div className="bg-white rounded-xl shadow-xl w-full max-w-2xl p-6 max-h-[90vh] overflow-y-auto">
@@ -408,6 +443,20 @@ function RawTagsModal({ result, onClose }) {
           )}
         </div>
 
+        {/* Parent context — где ищется название ЖК */}
+        {(hasParentCtx || rootHasData) && (
+          <div className="mb-4 bg-amber-50 border border-amber-200 rounded-lg p-3">
+            <div className="text-xs font-semibold text-amber-700 mb-2">
+              🔍 Родительские теги (здесь может быть название ЖК)
+            </div>
+            {hasParentCtx && result.parent_context.map((ctx, i) => (
+              <ContextBlock key={i} info={ctx} />
+            ))}
+            {rootHasData && <ContextBlock info={result.root_info} />}
+          </div>
+        )}
+
+        {/* Flat-level fields */}
         {result.fields && Object.keys(result.fields).length > 0 ? (
           <table className="w-full text-sm border-collapse">
             <thead>

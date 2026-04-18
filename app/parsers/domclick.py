@@ -46,8 +46,13 @@ FIELD_CANDIDATES: dict[str, list[str]] = {
         "jk", "JK", "jk_name",
         "ResidentialComplex", "residential_complex",
         "building_complex", "BuildingComplex",
-        # domoplaner variant
+        # domoplaner / profitbase variants
         "NewDevelopmentName", "newDevelopmentName",
+        "project", "Project", "project_name", "ProjectName",
+        "realty_developer", "object_name", "ObjectName",
+        "complex_title", "ComplexTitle",
+        "housing_complex", "HousingComplex",
+        "жк", "ЖК", "название_жк",
     ],
     "jk_id": [
         "newbuilding_id", "newbuildingId", "NewBuildingId",
@@ -243,11 +248,16 @@ class DomClickParser(BaseParser):
                 return results
 
         # Strategy B: flat object elements without complex wrapper
-        # JK name fallback: root element → source name
-        fallback_jk = (
-            root_jk_name
-            or self.source_config.get("name", "")
-        )
+        # JK name fallback chain:
+        #   1. Name extracted from root XML element (e.g. <feed name="ЖК Вышка">)
+        #   2. mapping_config.jk_name — admin-specified override for feeds without JK in XML
+        # NOTE: source "name" is intentionally NOT used — it is an admin label,
+        #       not the residential complex name.
+        mapping_jk = ""
+        mc = self.source_config.get("mapping_config") or {}
+        if isinstance(mc, dict):
+            mapping_jk = mc.get("jk_name", "") or ""
+        fallback_jk = root_jk_name or mapping_jk
 
         objects = self._find_objects(root)
         if not objects:
@@ -319,7 +329,9 @@ class DomClickParser(BaseParser):
         g = lambda field: self._get_field(elem, field)
 
         obj.source_object_id = g("id")
-        obj.jk_name         = jk_name_override or g("jk_name")
+        # Priority: field inside the object element → complex/root override
+        # (override is used when objects live inside <complex> that carries the JK name)
+        obj.jk_name         = g("jk_name") or jk_name_override
         obj.jk_id_cian      = g("jk_id") or None
         obj.house_name      = g("house_name") or None
         obj.section_number  = g("section") or None

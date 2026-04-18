@@ -213,24 +213,54 @@ async def raw_xml_tags(
 
     def collect(elem, prefix=""):
         tag = elem.tag if not prefix else f"{prefix}/{elem.tag}"
-        # Text value
         val = (elem.text or "").strip()
         if val:
             fields[tag] = val[:80]
-        # Attributes
         for attr, av in elem.attrib.items():
             fields[f"{tag}[@{attr}]"] = av[:80]
-        # Recurse into children (max depth 2)
         if prefix.count("/") < 2:
             for child in elem:
                 collect(child, tag)
 
     collect(first_obj)
 
+    # ── Collect parent chain (for detecting JK name on <complex> level) ──────
+    # Build a parent map so we can walk up from first_obj
+    parent_map: dict = {}
+    for elem in root.iter():
+        for child in elem:
+            parent_map[child] = elem
+
+    parent_context: list[dict] = []
+    cur = first_obj
+    depth = 0
+    while cur in parent_map and depth < 5:
+        cur = parent_map[cur]
+        if cur is root:
+            break
+        entry: dict = {"tag": cur.tag, "attrs": {}, "direct_text_children": {}}
+        for attr, av in cur.attrib.items():
+            entry["attrs"][attr] = av[:80]
+        for child in cur:
+            if child.text and child.text.strip() and not list(child):
+                entry["direct_text_children"][child.tag] = child.text.strip()[:80]
+        parent_context.append(entry)
+        depth += 1
+
+    # Root element attributes / direct non-object children with text
+    root_info: dict = {"tag": root.tag, "attrs": {}, "direct_text_children": {}}
+    for attr, av in root.attrib.items():
+        root_info["attrs"][attr] = av[:80]
+    for child in root:
+        if child.tag != first_obj.tag and child.text and child.text.strip() and not list(child):
+            root_info["direct_text_children"][child.tag] = child.text.strip()[:80]
+
     return {
         "root_tag": root.tag,
         "object_tag": first_obj.tag,
         "total_objects": len(root.findall(f".//{first_obj.tag}")),
+        "root_info": root_info,
+        "parent_context": parent_context,
         "fields": fields,
     }
 
