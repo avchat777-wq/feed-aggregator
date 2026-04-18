@@ -19,8 +19,8 @@ export default function Mappings() {
 
   const load = () => {
     Promise.all([
-      api.get('/mappings', { params: selectedSource ? { source_id: selectedSource } : {} }),
-      api.get('/sources'),
+      api.get('/api/mappings', { params: selectedSource ? { source_id: selectedSource } : {} }),
+      api.get('/api/sources'),
     ]).then(([m, s]) => {
       setMappings(m.data)
       setSources(s.data.filter(src => src.type === 'custom_xml' || src.type === 'excel'))
@@ -31,13 +31,13 @@ export default function Mappings() {
 
   const handleAdd = async () => {
     if (!selectedSource || !newMapping.source_field || !newMapping.target_field) return
-    await api.post('/mappings', { ...newMapping, source_id: parseInt(selectedSource) })
+    await api.post('/api/mappings', { ...newMapping, source_id: parseInt(selectedSource) })
     setNewMapping({ source_field: '', target_field: 'flat_number', transform_rule: '' })
     load()
   }
 
   const handleDelete = async (id) => {
-    await api.delete(`/mappings/${id}`)
+    await api.delete(`/api/mappings/${id}`)
     load()
   }
 
