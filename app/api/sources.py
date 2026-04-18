@@ -158,6 +158,83 @@ async def test_source(
     }
 
 
+@router.get("/{source_id}/raw-tags")
+async def raw_xml_tags(
+    source_id: int,
+    db: AsyncSession = Depends(get_db),
+    _=Depends(require_admin),
+):
+    """Fetch feed and return all XML tag names + sample values from first object.
+
+    Useful for diagnosing which field names a feed uses, so you can update
+    FIELD_CANDIDATES in the parser if fields are missing.
+    """
+    result = await db.execute(select(Source).where(Source.id == source_id))
+    source = result.scalar_one_or_none()
+    if not source:
+        raise HTTPException(status_code=404, detail="Source not found")
+    if not source.url:
+        raise HTTPException(status_code=400, detail="Source has no URL")
+
+    try:
+        async with httpx.AsyncClient(timeout=30, follow_redirects=True) as client:
+            resp = await client.get(source.url)
+            resp.raise_for_status()
+            content = resp.content
+    except Exception as e:
+        return {"error": str(e)}
+
+    from lxml import etree as _etree
+
+    try:
+        root = _etree.fromstring(content)
+    except _etree.XMLSyntaxError:
+        # Try with recovery for slightly broken feeds
+        parser_lxml = _etree.XMLParser(recover=True)
+        root = _etree.fromstring(content, parser=parser_lxml)
+
+    # Find first object element
+    first_obj = None
+    for tag in ("object", "Object", "offer", "Offer", "flat", "Flat", "item", "Item", "apartment"):
+        els = root.findall(f".//{tag}")
+        if els:
+            first_obj = els[0]
+            break
+
+    if first_obj is None:
+        return {
+            "root_tag": root.tag,
+            "root_children": [c.tag for c in root],
+            "error": "No object/offer/flat elements found",
+        }
+
+    # Collect all tags and their values from first object
+    fields: dict[str, str] = {}
+
+    def collect(elem, prefix=""):
+        tag = elem.tag if not prefix else f"{prefix}/{elem.tag}"
+        # Text value
+        val = (elem.text or "").strip()
+        if val:
+            fields[tag] = val[:80]
+        # Attributes
+        for attr, av in elem.attrib.items():
+            fields[f"{tag}[@{attr}]"] = av[:80]
+        # Recurse into children (max depth 2)
+        if prefix.count("/") < 2:
+            for child in elem:
+                collect(child, tag)
+
+    collect(first_obj)
+
+    return {
+        "root_tag": root.tag,
+        "object_tag": first_obj.tag,
+        "total_objects": len(root.findall(f".//{first_obj.tag}")),
+        "fields": fields,
+    }
+
+
 # ──────────────────────────────────────────────────────────────────────────────
 # Pre-flight diagnostics
 # ──────────────────────────────────────────────────────────────────────────────

@@ -382,9 +382,67 @@ function TestResultModal({ result, onClose }) {
   );
 }
 
+// ── Raw XML tags modal ────────────────────────────────────────────────────────
+
+function RawTagsModal({ result, onClose }) {
+  if (!result) return null;
+  return (
+    <div className="fixed inset-0 bg-black bg-opacity-40 flex items-center justify-center z-50">
+      <div className="bg-white rounded-xl shadow-xl w-full max-w-2xl p-6 max-h-[90vh] overflow-y-auto">
+        <div className="flex justify-between items-center mb-4">
+          <h3 className="font-semibold text-gray-800 text-lg">Теги XML в фиде</h3>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 text-xl">✕</button>
+        </div>
+
+        {result.error && !result.fields && (
+          <div className="bg-red-50 text-red-700 px-4 py-3 rounded-lg text-sm mb-4">
+            {result.error}
+          </div>
+        )}
+
+        <div className="mb-3 text-sm text-gray-500">
+          Корневой тег: <code className="bg-gray-100 px-1 rounded">&lt;{result.root_tag}&gt;</code>
+          {result.object_tag && (
+            <> → объект: <code className="bg-gray-100 px-1 rounded">&lt;{result.object_tag}&gt;</code>
+            <span className="ml-2 text-gray-400">({result.total_objects} шт.)</span></>
+          )}
+        </div>
+
+        {result.fields && Object.keys(result.fields).length > 0 ? (
+          <table className="w-full text-sm border-collapse">
+            <thead>
+              <tr className="bg-gray-50 text-xs text-gray-500 uppercase">
+                <th className="text-left py-1.5 px-3 border-b">Тег</th>
+                <th className="text-left py-1.5 px-3 border-b">Значение (первый объект)</th>
+              </tr>
+            </thead>
+            <tbody>
+              {Object.entries(result.fields).map(([tag, val]) => (
+                <tr key={tag} className="border-b border-gray-100 hover:bg-gray-50">
+                  <td className="py-1.5 px-3 font-mono text-blue-700 text-xs">{tag}</td>
+                  <td className="py-1.5 px-3 text-gray-700">{val}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        ) : (
+          <p className="text-sm text-gray-400">Поля не найдены</p>
+        )}
+
+        <button
+          onClick={onClose}
+          className="mt-5 w-full bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg py-2 text-sm"
+        >
+          Закрыть
+        </button>
+      </div>
+    </div>
+  );
+}
+
 // ── Source card ───────────────────────────────────────────────────────────────
 
-function SourceCard({ source, onEdit, onDelete, onDiagnostics, onTest }) {
+function SourceCard({ source, onEdit, onDelete, onDiagnostics, onTest, onRawTags }) {
   const [expanded, setExpanded] = useState(false);
   const typeLabel = SOURCE_TYPES.find(t => t.value === source.type)?.label || source.type;
 
@@ -464,6 +522,13 @@ function SourceCard({ source, onEdit, onDelete, onDiagnostics, onTest }) {
             {expanded ? "▲ Скрыть ЖК" : "▼ ЖК в фиде"}
           </button>
           <button
+            onClick={() => onRawTags(source)}
+            className="text-xs px-3 py-1.5 rounded-lg border border-purple-200 hover:bg-purple-50 text-purple-600"
+            title="Показать теги XML для диагностики"
+          >
+            🏷 Теги XML
+          </button>
+          <button
             onClick={() => onEdit(source)}
             className="text-xs px-3 py-1.5 rounded-lg border border-blue-200 hover:bg-blue-50 text-blue-600"
           >
@@ -491,9 +556,11 @@ export default function Sources() {
   const [loading, setLoading]         = useState(true);
   const [showForm, setShowForm]       = useState(false);
   const [editSource, setEditSource]   = useState(null);
-  const [diagSource, setDiagSource]   = useState(null);
-  const [testResult, setTestResult]   = useState(null);
-  const [testLoading, setTestLoading] = useState(false);
+  const [diagSource, setDiagSource]     = useState(null);
+  const [testResult, setTestResult]     = useState(null);
+  const [testLoading, setTestLoading]   = useState(false);
+  const [rawTagsResult, setRawTagsResult] = useState(null);
+  const [rawTagsLoading, setRawTagsLoading] = useState(false);
 
   const load = () => {
     setLoading(true);
@@ -520,6 +587,18 @@ export default function Sources() {
       setTestResult({ success: false, error: e.message });
     } finally {
       setTestLoading(false);
+    }
+  };
+
+  const handleRawTags = async source => {
+    setRawTagsLoading(true);
+    try {
+      const r = await api.get(`/api/sources/${source.id}/raw-tags`);
+      setRawTagsResult(r.data);
+    } catch (e) {
+      setRawTagsResult({ error: e.message });
+    } finally {
+      setRawTagsLoading(false);
     }
   };
 
@@ -579,8 +658,19 @@ export default function Sources() {
               onDelete={handleDelete}
               onDiagnostics={setDiagSource}
               onTest={handleTest}
+              onRawTags={handleRawTags}
             />
           ))}
+        </div>
+      )}
+
+      {/* Raw tags loading overlay */}
+      {rawTagsLoading && (
+        <div className="fixed inset-0 bg-black bg-opacity-20 flex items-center justify-center z-50">
+          <div className="bg-white rounded-xl px-8 py-6 text-center shadow-xl">
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-purple-500 mx-auto mb-3" />
+            <p className="text-sm text-gray-600">Загрузка XML-тегов...</p>
+          </div>
         </div>
       )}
 
@@ -610,6 +700,9 @@ export default function Sources() {
       )}
       {testResult && (
         <TestResultModal result={testResult} onClose={() => setTestResult(null)} />
+      )}
+      {rawTagsResult && (
+        <RawTagsModal result={rawTagsResult} onClose={() => setRawTagsResult(null)} />
       )}
     </div>
   );

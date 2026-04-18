@@ -138,14 +138,23 @@ async def run_preflight(source: Source) -> PreflightResult:
 
     # 5. Valid XML (root tag parseable)
     try:
-        root = etree.fromstring(content[:4096])  # Only need root for validation
+        root = etree.fromstring(content)  # Validate full content
         result.add("xml_valid", True, f"Root: <{root.tag}>")
     except etree.XMLSyntaxError as e:
-        # Not necessarily fatal — could be Excel/CSV
-        if source.type in ("excel", "csv"):
-            result.add("xml_valid", True, "Non-XML format (Excel/CSV)")
-        else:
-            result.add("xml_valid", False, f"XML error: {str(e)[:120]}")
+        # Try with recovery parser (some feeds have minor XML issues)
+        try:
+            recover_parser = etree.XMLParser(recover=True)
+            root = etree.fromstring(content, parser=recover_parser)
+            if root is not None and len(root) > 0:
+                result.add("xml_valid", True, f"Root: <{root.tag}> (recovered)")
+            else:
+                raise etree.XMLSyntaxError("Recovery produced empty tree", None, None, None)
+        except Exception:
+            # Not necessarily fatal — could be Excel/CSV
+            if source.type in ("excel", "csv"):
+                result.add("xml_valid", True, "Non-XML format (Excel/CSV)")
+            else:
+                result.add("xml_valid", False, f"XML error: {str(e)[:120]}")
 
     return result
 
