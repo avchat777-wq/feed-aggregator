@@ -15,7 +15,7 @@ export default function Login() {
       const form = new URLSearchParams()
       form.append('username', username)
       form.append('password', password)
-      const { data } = await api.post('/auth/login', form, {
+      const { data } = await api.post('/api/auth/login', form, {
         headers: { 'Content-Type': 'application/x-www-form-urlencoded' }
       })
       localStorage.setItem('token', data.access_token)
