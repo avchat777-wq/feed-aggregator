@@ -17,14 +17,14 @@ export default function Objects() {
     if (filters.status) params.status = filters.status
     if (filters.developer) params.developer = filters.developer
     if (filters.jk_name) params.jk_name = filters.jk_name
-    api.get('/objects', { params }).then(r => setObjects(r.data)).finally(() => setLoading(false))
+    api.get('/api/objects', { params }).then(r => setObjects(r.data)).finally(() => setLoading(false))
   }
 
   useEffect(() => { load() }, [page, filters])
 
   const showHistory = async (obj) => {
     setSelected(obj)
-    const { data } = await api.get(`/objects/${obj.id}/history`)
+    const { data } = await api.get(`/api/objects/${obj.id}/history`)
     setHistory(data)
   }
 
