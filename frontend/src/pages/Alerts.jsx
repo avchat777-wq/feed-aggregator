@@ -10,11 +10,11 @@ export default function Alerts() {
   useEffect(() => {
     const params = {}
     if (filter) params.type = filter
-    api.get('/notifications/alerts', { params }).then(r => setAlerts(r.data)).finally(() => setLoading(false))
+    api.get('/api/notifications/alerts', { params }).then(r => setAlerts(r.data)).finally(() => setLoading(false))
   }, [filter])
 
   const sendTest = async () => {
-    const { data } = await api.post('/notifications/test')
+    const { data } = await api.post('/api/notifications/test')
     alert(data.success ? 'Тестовое уведомление отправлено!' : 'Ошибка отправки. Проверьте настройки бота.')
   }
 

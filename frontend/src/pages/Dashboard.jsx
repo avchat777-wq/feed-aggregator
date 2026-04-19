@@ -49,7 +49,7 @@ export default function Dashboard() {
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    api.get('/dashboard').then(r => setData(r.data)).finally(() => setLoading(false))
+    api.get('/api/dashboard').then(r => setData(r.data)).finally(() => setLoading(false))
   }, [])
 
   if (loading) return <div className="flex justify-center py-12"><div className="animate-spin h-8 w-8 border-4 border-blue-500 border-t-transparent rounded-full" /></div>

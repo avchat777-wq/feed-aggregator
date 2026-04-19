@@ -10,7 +10,7 @@ export default function Logs() {
     setLoading(true)
     const params = { page: filter.page, per_page: 50 }
     if (filter.status) params.status = filter.status
-    api.get('/logs', { params }).then(r => setLogs(r.data)).finally(() => setLoading(false))
+    api.get('/api/logs', { params }).then(r => setLogs(r.data)).finally(() => setLoading(false))
   }, [filter])
 
   const statusColors = {
