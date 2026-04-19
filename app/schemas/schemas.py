@@ -116,6 +116,7 @@ class ObjectResponse(BaseModel):
     is_euro: Optional[bool] = None
     is_apartments: Optional[bool] = None
     description: Optional[str] = None
+    address: Optional[str] = None
     photos: Optional[list[str]] = None
     phone: str
     status: str

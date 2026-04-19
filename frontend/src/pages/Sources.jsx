@@ -161,18 +161,43 @@ function DiagnosticsPanel({ sourceId, onClose }) {
 
 function SourceForm({ source, onSave, onClose }) {
   const [form, setForm] = useState(
-    source || {
-      name: "", developer_name: "", type: "domclick",
-      url: "", is_active: true, phone_override: "",
-    }
+    source
+      ? {
+          ...source,
+          mapping_config_str: source.mapping_config
+            ? JSON.stringify(source.mapping_config, null, 2)
+            : "",
+        }
+      : {
+          name: "", developer_name: "", type: "domclick",
+          url: "", is_active: true, phone_override: "",
+          mapping_config_str: "",
+        }
   );
   const [saving, setSaving] = useState(false);
+  const [mcError, setMcError] = useState("");
 
   const handleSubmit = async e => {
     e.preventDefault();
     setSaving(true);
+    setMcError("");
     try {
-      const payload = { ...form, phone_override: form.phone_override || null };
+      let mapping_config = null;
+      if (form.mapping_config_str && form.mapping_config_str.trim()) {
+        try {
+          mapping_config = JSON.parse(form.mapping_config_str);
+        } catch {
+          setMcError("Неверный JSON в Mapping Config");
+          setSaving(false);
+          return;
+        }
+      }
+      const payload = {
+        ...form,
+        phone_override: form.phone_override || null,
+        mapping_config,
+      };
+      delete payload.mapping_config_str;
       if (source?.id) {
         await api.put(`/api/sources/${source.id}`, payload);
       } else {
@@ -259,6 +284,23 @@ function SourceForm({ source, onSave, onClose }) {
             />
             <p className="text-xs text-gray-400 mt-1">
               Заменяет телефон из фида для всех объектов этого источника.
+            </p>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Mapping Config (JSON)
+            </label>
+            <textarea
+              className={`w-full border rounded-lg px-3 py-2 text-xs font-mono focus:outline-none focus:ring-2 focus:ring-blue-500 ${mcError ? "border-red-400" : ""}`}
+              rows={4}
+              value={form.mapping_config_str || ""}
+              onChange={e => { f("mapping_config_str", e.target.value); setMcError(""); }}
+              placeholder={'{\n  "jk_name": "Название ЖК"\n}'}
+            />
+            {mcError && <p className="text-xs text-red-500 mt-1">{mcError}</p>}
+            <p className="text-xs text-gray-400 mt-1">
+              Для Avito: <code className="bg-gray-100 px-1 rounded">{"{ \"jk_name\": \"Название ЖК\" }"}</code> — если ЖК не указан в фиде.
             </p>
           </div>
 
