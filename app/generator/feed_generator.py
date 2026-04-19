@@ -186,8 +186,14 @@ class FeedGenerator:
             os.write(fd, data)
             os.close(fd)
             os.replace(tmp_path, str(path))
+            # Ensure nginx and other processes can read the file
+            os.chmod(path, 0o644)
+            os.chmod(dir_path, 0o755)
         except Exception:
-            os.close(fd) if not os.get_inheritable(fd) else None
+            try:
+                os.close(fd)
+            except OSError:
+                pass
             if os.path.exists(tmp_path):
                 os.unlink(tmp_path)
             raise
