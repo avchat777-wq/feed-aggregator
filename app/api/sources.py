@@ -193,9 +193,14 @@ async def raw_xml_tags(
         parser_lxml = _etree.XMLParser(recover=True)
         root = _etree.fromstring(content, parser=parser_lxml)
 
-    # Find first object element
+    # Find first object element (covers DomClick, Avito, Yandex, custom formats)
     first_obj = None
-    for tag in ("object", "Object", "offer", "Offer", "flat", "Flat", "item", "Item", "apartment"):
+    for tag in (
+        "Ad", "ad",                                          # Avito
+        "object", "Object", "offer", "Offer",               # DomClick / Yandex
+        "flat", "Flat", "item", "Item", "apartment",        # misc
+        "realty", "Realty", "listing", "Listing",
+    ):
         els = root.findall(f".//{tag}")
         if els:
             first_obj = els[0]

@@ -47,6 +47,7 @@ class UnifiedObject:
     decoration: Optional[str] = None
     is_euro: Optional[bool] = None
     is_apartments: Optional[bool] = None
+    address: Optional[str] = None
     description: Optional[str] = None
     photos: list[str] = field(default_factory=list)
     latitude: Optional[Decimal] = None
@@ -135,6 +136,7 @@ def normalize_object(
     u.decoration = _normalize_decoration(raw.decoration)
     u.is_euro = _parse_bool(raw.is_euro)
     u.is_apartments = _parse_bool(raw.is_apartments)
+    u.address = raw.address.strip() if raw.address else None
     u.description = raw.description.strip() if raw.description else None
     u.photos = [url for url in raw.photos if url.startswith("http")]
     u.latitude = _parse_decimal(raw.latitude)

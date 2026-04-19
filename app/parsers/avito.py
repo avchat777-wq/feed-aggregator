@@ -51,30 +51,59 @@ class AvitoParser(BaseParser):
 
         obj = RawObject()
         obj.source_object_id = t("Id")
-        obj.jk_name = t("NewDevelopmentName") or t("ObjectName") or t("Title")
-        obj.flat_number = t("FlatNumber") or t("ApartmentNumber") or obj.source_object_id
-        obj.floor = t("Floor")
-        obj.floors_total = t("Floors") or None
-        obj.rooms = t("Rooms")
-        obj.total_area = t("Square")
-        obj.living_area = t("LivingSquare") or None
-        obj.kitchen_area = t("KitchenSquare") or None
-        obj.price = t("Price")
-        obj.description = t("Description")
-        obj.address = t("Address")
-        obj.decoration = t("Decoration") or t("Renovation") or None
-        obj.sale_type = t("DealType") or None
-        obj.house_name = t("HouseName") or t("Building") or None
-        obj.section_number = t("Section") or None
-        obj.phone = t("ContactPhone") or t("Phone") or ""
 
-        # Photos
-        images = ad.find("Images")
-        if images is not None:
-            for img in images.findall("Image"):
-                url = img.get("url", "") or (img.text or "")
-                if url.strip():
-                    obj.photos.append(url.strip())
+        # JK name — try all known Avito/macroserver field names
+        _mc = self.source_config.get("mapping_config") or {}
+        _mapping_jk = _mc.get("jk_name", "") if isinstance(_mc, dict) else ""
+        obj.jk_name = (
+            t("NewDevelopmentName") or
+            t("ResidentialComplex") or
+            t("ComplexName") or
+            t("ObjectName") or
+            t("BuildingName") or
+            t("HousingComplex") or
+            t("JKName") or
+            t("jk_name") or
+            t("Title") or
+            _mapping_jk
+        )
+
+        obj.flat_number = t("FlatNumber") or t("ApartmentNumber") or t("Flat") or obj.source_object_id
+        obj.floor = t("Floor") or t("FloorNumber") or "0"
+        obj.floors_total = t("Floors") or t("FloorsCount") or t("FloorsTotal") or None
+        obj.rooms = t("Rooms") or t("RoomsCount") or t("RoomCount") or "0"
+        obj.total_area = t("Square") or t("TotalArea") or t("Area") or "0"
+        obj.living_area = t("LivingSquare") or t("LivingArea") or None
+        obj.kitchen_area = t("KitchenSquare") or t("KitchenArea") or None
+        obj.price = t("Price") or t("Cost") or "0"
+        obj.description = t("Description") or t("Text") or None
+        obj.address = t("Address") or t("Location") or None
+        obj.decoration = t("Decoration") or t("Renovation") or t("Finish") or None
+        obj.sale_type = t("DealType") or t("SaleType") or None
+        obj.house_name = t("HouseName") or t("Building") or t("Corpus") or t("Liter") or None
+        obj.section_number = t("Section") or t("SectionNumber") or None
+        obj.phone = (
+            t("ContactPhone") or t("Phone") or
+            self.source_config.get("phone_override", "")
+        )
+
+        # Photos — try <Images><Image url="...">, <Photos><Photo>, direct <ImageUrl>
+        for container_tag in ("Images", "images", "Photos", "photos"):
+            container = ad.find(container_tag)
+            if container is not None:
+                for child in container:
+                    url = child.get("url", "") or child.get("src", "") or (child.text or "")
+                    if url.strip().startswith("http"):
+                        obj.photos.append(url.strip())
+                if obj.photos:
+                    break
+
+        # Fallback: numbered image tags
+        if not obj.photos:
+            for i in range(1, 20):
+                url = t(f"ImageUrl{i}") or t(f"Photo{i}") or t(f"Image{i}")
+                if url.startswith("http"):
+                    obj.photos.append(url)
 
         obj.developer_name = self.source_config.get("developer_name", "")
 

@@ -235,16 +235,30 @@ class DomClickParser(BaseParser):
                 if buildings:
                     for building_elem in buildings:
                         house_name = self._get_building_name(building_elem)
+                        # Pick up floors_total and address from <building> level
+                        # since they're not repeated inside each <flat>
+                        building_floors = self._get_text(building_elem, (
+                            "floors", "Floors", "floors_count", "FloorsCount",
+                        ))
+                        building_address = self._get_text(building_elem, (
+                            "address", "Address",
+                        ))
                         for flat_tag in ("flat", "Flat", "object", "Object", "offer", "Offer"):
                             flats = (building_elem.findall(flat_tag) or
                                      building_elem.findall(f".//{flat_tag}"))
                             if flats:
                                 for elem in flats:
                                     try:
+                                        # Filter non-apartments: housing_type != "0"
+                                        ht = self._get_text(elem, ("housing_type", "HousingType"))
+                                        if ht and ht != "0":
+                                            continue
                                         obj = self._parse_object(
                                             elem,
                                             jk_name_override=jk_name,
                                             house_name_override=house_name,
+                                            floors_total_override=building_floors,
+                                            address_override=building_address,
                                         )
                                         if self._is_valid(obj):
                                             results.append(obj)
@@ -379,21 +393,25 @@ class DomClickParser(BaseParser):
 
     # ── Per-object parsing ──────────────────────────────────────────────────
 
-    def _parse_object(self, elem, jk_name_override: str = "",
-                       house_name_override: str = "") -> RawObject:
+    def _parse_object(
+        self, elem,
+        jk_name_override: str = "",
+        house_name_override: str = "",
+        floors_total_override: str = "",
+        address_override: str = "",
+    ) -> RawObject:
         obj = RawObject()
         g = lambda field: self._get_field(elem, field)
 
         obj.source_object_id = g("id")
-        # Priority: field inside the object element → complex/root override
-        # (override is used when objects live inside <complex> that carries the JK name)
         obj.jk_name         = g("jk_name") or jk_name_override
         obj.jk_id_cian      = g("jk_id") or None
         obj.house_name      = g("house_name") or house_name_override or None
         obj.section_number  = g("section") or None
         obj.flat_number     = g("flat_number") or obj.source_object_id
         obj.floor           = g("floor")
-        obj.floors_total    = g("floors_total") or None
+        # floors_total: try from flat element first, then fall back to building level
+        obj.floors_total    = g("floors_total") or floors_total_override or None
         obj.rooms           = self._normalize_rooms_raw(g("rooms"))
         obj.total_area      = g("total_area")
         obj.living_area     = g("living_area") or None
@@ -405,6 +423,8 @@ class DomClickParser(BaseParser):
         obj.latitude        = g("latitude") or None
         obj.longitude       = g("longitude") or None
         obj.status          = self._map_status(g("status"))
+        # address: from flat element or building level
+        obj.address         = g("address") or address_override or None
 
         # Developer name from source config
         obj.developer_name = self.source_config.get("developer_name", "")
@@ -412,7 +432,7 @@ class DomClickParser(BaseParser):
         # Phone — look in <phones><phone> or direct tags
         obj.phone = self._extract_phone(elem)
 
-        # Photos — look in <images><image> or <photos><photo>
+        # Photos — look in <images>/<image>, <photos>/<photo>, <plans>/<plan>
         obj.photos = self._extract_photos(elem)
 
         return obj
@@ -451,7 +471,16 @@ class DomClickParser(BaseParser):
         return self.source_config.get("phone_override", "")
 
     def _extract_photos(self, elem) -> list[str]:
-        """Extract photo URLs from <images><image>, <photos><photo>, etc."""
+        """Extract photo URLs.
+
+        Handles:
+        - <images><image>URL</image></images>          (common DomClick)
+        - <photos><photo>URL</photo></photos>
+        - <plans><plan>URL</plan></plans>              (domoplaner.ru)
+        - <gallery><item url="..."/></gallery>
+        - <image url="..."/> direct attribute
+        - numbered: <image_url_1>, <photo_1>, etc.
+        """
         photos = []
         seen: set[str] = set()
 
@@ -461,15 +490,18 @@ class DomClickParser(BaseParser):
                 seen.add(url)
                 photos.append(url)
 
-        # Try <images> container
-        for container_tag in ("images", "Images", "photos", "Photos", "gallery", "Gallery"):
+        for container_tag in (
+            "images", "Images",
+            "photos", "Photos",
+            "plans", "Plans",       # domoplaner.ru uses <plans><plan>URL</plan></plans>
+            "gallery", "Gallery",
+            "Pictures", "pictures",
+        ):
             container = elem.find(container_tag)
             if container is not None:
                 for child in container:
-                    # tag might be <image>, <photo>, <item>, <url>
                     if child.text:
                         add_url(child.text)
-                    # also check src, url attributes
                     for attr in ("src", "url", "href"):
                         val = child.get(attr)
                         if val:
@@ -477,14 +509,23 @@ class DomClickParser(BaseParser):
                 if photos:
                     return photos
 
-        # Try <image_url_1>, <image_url_2>, ... pattern
+        # Numbered patterns
         for i in range(1, 20):
-            for tag in (f"image_url_{i}", f"photo_{i}", f"img{i}"):
+            for tag in (f"image_url_{i}", f"photo_{i}", f"img{i}", f"plan_{i}"):
                 el = elem.find(tag)
                 if el is not None and el.text:
                     add_url(el.text)
 
         return photos
+
+    @staticmethod
+    def _get_text(elem, tags: tuple) -> str:
+        """Return text of first found tag from the list."""
+        for tag in tags:
+            el = elem.find(tag)
+            if el is not None and el.text and el.text.strip() not in ("", "null", "None"):
+                return el.text.strip()
+        return ""
 
     # ── Normalization helpers ───────────────────────────────────────────────
 

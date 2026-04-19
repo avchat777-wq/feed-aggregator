@@ -36,6 +36,7 @@ class Object(Base):
     decoration = Column(String(50), nullable=True, comment="without, rough, fine, turnkey")
     is_euro = Column(Boolean, nullable=True)
     is_apartments = Column(Boolean, nullable=True)
+    address = Column(Text, nullable=True, comment="Street address (from feed)")
     description = Column(Text, nullable=True)
     photos = Column(ARRAY(Text), nullable=True, comment="Array of photo URLs")
     latitude = Column(Numeric(10, 7), nullable=True)
