@@ -8,14 +8,14 @@ export default function Feed() {
   const [syncing, setSyncing] = useState(false)
 
   useEffect(() => {
-    api.get('/feed/url').then(r => setFeedUrl(r.data.url))
-    api.get('/feed/preview').then(r => setPreview(r.data))
+    api.get('/api/feed/url').then(r => setFeedUrl(r.data.url))
+    api.get('/api/feed/preview').then(r => setPreview(r.data))
   }, [])
 
   const triggerSync = async () => {
     setSyncing(true)
     try {
-      await api.post('/feed/sync')
+      await api.post('/api/feed/sync')
       alert('Синхронизация запущена в фоне.')
     } catch (e) {
       alert('Ошибка: ' + e.message)
