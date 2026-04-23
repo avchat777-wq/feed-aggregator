@@ -5,14 +5,16 @@ Supports avito (formatVersion=3) and avito_builder formats from macroserver.ru.
 
 Key differences from other formats:
 - JK name is often NOT in the feed (no <NewDevelopmentName> tag).
-  Set mapping_config = {"jk_name": "..."} in source settings.
+  Resolved via Avito New Developments directory (avito_lookup service).
+  Fallback: mapping_config = {"jk_name": "..."} in source settings.
 - Non-apartment ads (garages, parking) are filtered out automatically.
-- <NewDevelopmentId> is stored as jk_id_cian for CIAN matching.
+- <NewDevelopmentId> is used for JK lookup and stored as jk_id_cian.
 """
 
 import logging
 from lxml import etree
 from app.parsers.base import BaseParser, RawObject
+from app.services.avito_lookup import avito_lookup
 
 logger = logging.getLogger(__name__)
 
@@ -86,11 +88,18 @@ class AvitoParser(BaseParser):
         obj = RawObject()
         obj.source_object_id = t("Id")
 
-        # JK name — Avito feeds often don't include it.
-        # Priority: feed tag → mapping_config.jk_name set by admin in source settings.
+        # CIAN/Avito JK ID from <NewDevelopmentId>
+        dev_id = t("NewDevelopmentId") or None
+        obj.jk_id_cian = dev_id
+
+        # JK name resolution priority:
+        # 1. Direct tag in feed (rare)
+        # 2. Avito New Developments directory lookup by NewDevelopmentId
+        # 3. mapping_config.jk_name set by admin in source settings
         _mc = self.source_config.get("mapping_config") or {}
         _mapping_jk = _mc.get("jk_name", "") if isinstance(_mc, dict) else ""
-        obj.jk_name = (
+
+        feed_jk = (
             t("NewDevelopmentName") or
             t("ResidentialComplex") or
             t("ComplexName") or
@@ -98,12 +107,24 @@ class AvitoParser(BaseParser):
             t("BuildingName") or
             t("HousingComplex") or
             t("JKName") or
-            t("jk_name") or
-            _mapping_jk
+            t("jk_name")
         )
 
-        # CIAN/Avito JK ID from <NewDevelopmentId>
-        obj.jk_id_cian = t("NewDevelopmentId") or None
+        # Try Avito directory lookup
+        lookup_info = avito_lookup.get(dev_id) if dev_id else None
+
+        if feed_jk:
+            obj.jk_name = feed_jk
+        elif lookup_info:
+            obj.jk_name = lookup_info.jk_name
+            # Fill house_name from Housing entry if not already in feed
+            if lookup_info.house_name and not (t("HouseName") or t("Building") or t("Corpus")):
+                obj.house_name = lookup_info.house_name
+            # Fill address from lookup if not in feed
+            if lookup_info.address and not (t("Address") or t("Location")):
+                obj.address = lookup_info.address
+        else:
+            obj.jk_name = _mapping_jk
 
         obj.flat_number = (
             t("ApartmentNumber") or t("FlatNumber") or
@@ -116,10 +137,17 @@ class AvitoParser(BaseParser):
         obj.living_area = t("LivingSquare") or t("LivingArea") or None
         obj.kitchen_area = t("KitchenSquare") or t("KitchenArea") or None
         obj.price = t("Price") or t("Cost") or "0"
-        obj.address = t("Address") or t("Location") or None
+
+        # Address: feed value takes priority over lookup
+        if not obj.address:
+            obj.address = t("Address") or t("Location") or None
+            if not obj.address and lookup_info and lookup_info.address:
+                obj.address = lookup_info.address
+
         obj.decoration = t("Decoration") or t("Renovation") or t("Finish") or None
         obj.sale_type = t("DealType") or t("SaleType") or None
-        obj.house_name = t("HouseName") or t("Building") or t("Corpus") or None
+        if not obj.house_name:
+            obj.house_name = t("HouseName") or t("Building") or t("Corpus") or None
         obj.section_number = t("Section") or t("SectionNumber") or None
         obj.description = t("Description") or None
         obj.phone = (

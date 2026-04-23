@@ -642,6 +642,95 @@ function SourceCard({ source, onEdit, onDelete, onDiagnostics, onTest, onRawTags
 
 // ── Main page ─────────────────────────────────────────────────────────────────
 
+// ── Avito Developments Panel ──────────────────────────────────────────────────
+
+function AvitoDevelopmentsPanel() {
+  const [status, setStatus]     = useState(null);
+  const [uploading, setUploading] = useState(false);
+  const [downloading, setDownloading] = useState(false);
+  const [message, setMessage]   = useState(null);
+
+  const loadStatus = () => {
+    api.get("/api/admin/avito-developments/status")
+      .then(r => setStatus(r.data))
+      .catch(() => setStatus(null));
+  };
+
+  useEffect(() => { loadStatus(); }, []);
+
+  const handleUpload = async e => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setUploading(true);
+    setMessage(null);
+    try {
+      const form = new FormData();
+      form.append("file", file);
+      const r = await api.post("/api/admin/avito-developments/upload", form, {
+        headers: { "Content-Type": "multipart/form-data" }
+      });
+      setMessage({ ok: true, text: r.data.message });
+      loadStatus();
+    } catch (err) {
+      setMessage({ ok: false, text: err.response?.data?.detail || "Ошибка загрузки" });
+    } finally {
+      setUploading(false);
+      e.target.value = "";
+    }
+  };
+
+  const handleDownload = async () => {
+    setDownloading(true);
+    setMessage(null);
+    try {
+      const r = await api.post("/api/admin/avito-developments/download");
+      setMessage({ ok: true, text: r.data.message });
+      loadStatus();
+    } catch (err) {
+      setMessage({ ok: false, text: err.response?.data?.detail || "Ошибка скачивания" });
+    } finally {
+      setDownloading(false);
+    }
+  };
+
+  return (
+    <div className="bg-white rounded-xl border border-gray-200 p-4">
+      <div className="flex items-center justify-between flex-wrap gap-3">
+        <div>
+          <p className="text-sm font-semibold text-gray-800">
+            📋 Справочник ЖК Авито
+          </p>
+          <p className="text-xs text-gray-500 mt-0.5">
+            {status?.loaded
+              ? `✅ Загружен: ${status.entry_count.toLocaleString("ru-RU")} записей — ЖК определяется автоматически по NewDevelopmentId`
+              : "⚠️ Не загружен — ЖК в Авито фидах будет пустым. Загрузите New_developments.xml"}
+          </p>
+        </div>
+        <div className="flex gap-2 flex-wrap">
+          <button
+            onClick={handleDownload}
+            disabled={downloading}
+            className="text-xs px-3 py-1.5 rounded-lg border border-green-200 hover:bg-green-50 text-green-700 disabled:opacity-50"
+          >
+            {downloading ? "Скачивание..." : "⬇ Скачать с Авито"}
+          </button>
+          <label className={`text-xs px-3 py-1.5 rounded-lg border border-blue-200 hover:bg-blue-50 text-blue-700 cursor-pointer ${uploading ? "opacity-50 pointer-events-none" : ""}`}>
+            {uploading ? "Загрузка..." : "📂 Загрузить файл"}
+            <input type="file" accept=".xml" className="hidden" onChange={handleUpload} />
+          </label>
+        </div>
+      </div>
+      {message && (
+        <p className={`text-xs mt-2 ${message.ok ? "text-green-700" : "text-red-600"}`}>
+          {message.text}
+        </p>
+      )}
+    </div>
+  );
+}
+
+// ── Main page ─────────────────────────────────────────────────────────────────
+
 export default function Sources() {
   const [sources, setSources]         = useState([]);
   const [loading, setLoading]         = useState(true);
@@ -715,6 +804,9 @@ export default function Sources() {
           + Добавить
         </button>
       </div>
+
+      {/* Avito developments lookup panel */}
+      <AvitoDevelopmentsPanel />
 
       {/* Stats strip */}
       <div className="grid grid-cols-2 md:grid-cols-5 gap-3">

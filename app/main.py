@@ -10,8 +10,10 @@ from fastapi.staticfiles import StaticFiles
 from app.config import settings
 from app.database import async_session
 from app.api import auth, sources, objects, logs, mappings, dashboard, feed, notifications
+from app.api import admin
 from app.api.auth import ensure_admin_exists
 from app.scheduler.scheduler import start_scheduler, scheduler
+from app.services.avito_lookup import avito_lookup
 
 logging.basicConfig(
     level=logging.INFO,
@@ -29,6 +31,9 @@ async def lifespan(app: FastAPI):
     # Ensure admin user exists
     async with async_session() as session:
         await ensure_admin_exists(session)
+
+    # Auto-load Avito developments lookup from disk (if file exists)
+    avito_lookup.try_autoload()
 
     # Start scheduler
     start_scheduler()
@@ -67,6 +72,7 @@ app.include_router(logs.router)
 app.include_router(mappings.router)
 app.include_router(feed.router)
 app.include_router(notifications.router)
+app.include_router(admin.router)
 
 # Serve static feed files
 try:
