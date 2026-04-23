@@ -509,6 +509,17 @@ class DomClickParser(BaseParser):
                 if photos:
                     return photos
 
+        # Fallback: <plan> or <image> as direct child of flat (barnaul-gi.ru format)
+        for direct_tag in ("plan", "Plan", "image", "Image", "photo", "Photo"):
+            el = elem.find(direct_tag)
+            if el is not None and el.text:
+                add_url(el.text)
+            elif el is not None:
+                for attr in ("src", "url", "href"):
+                    val = el.get(attr)
+                    if val:
+                        add_url(val)
+
         # Numbered patterns
         for i in range(1, 20):
             for tag in (f"image_url_{i}", f"photo_{i}", f"img{i}", f"plan_{i}"):
