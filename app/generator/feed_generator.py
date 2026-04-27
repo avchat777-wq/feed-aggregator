@@ -53,7 +53,9 @@ class FeedGenerator:
     def _build_xml(self, objects: list[Object]) -> bytes:
         now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S+00:00")
 
-        root = etree.Element("Feed")
+        root = etree.Element("Ads")
+        root.set("formatVersion", "3")
+        root.set("target", "Intrum")
         etree.SubElement(root, "Feed_Version").text = "2"
         etree.SubElement(root, "Generated").text = now
         etree.SubElement(root, "Source").text = "MIEL-Barnaul-FeedAggregator"
@@ -67,7 +69,7 @@ class FeedGenerator:
         )
 
     def _add_object_element(self, root, obj: Object):
-        obj_el = etree.SubElement(root, "Object")
+        obj_el = etree.SubElement(root, "Ad")
 
         etree.SubElement(obj_el, "ExternalId").text = obj.external_id
         etree.SubElement(obj_el, "Category").text = "newBuildingFlatSale"
