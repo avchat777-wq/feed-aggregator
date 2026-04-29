@@ -226,6 +226,10 @@ class DomClickParser(BaseParser):
             for complex_elem in complexes:
                 jk_name = self._get_complex_name(complex_elem)
 
+                # Coordinates at complex level (propagate to all flats in this complex)
+                complex_lat = self._get_text(complex_elem, ("latitude", "Latitude")) or ""
+                complex_lon = self._get_text(complex_elem, ("longitude", "Longitude")) or ""
+
                 # Check for intermediate <building> layer
                 # (domoplaner structure: complex → buildings → building → flats → flat)
                 buildings = (
@@ -243,22 +247,26 @@ class DomClickParser(BaseParser):
                         building_address = self._get_text(building_elem, (
                             "address", "Address",
                         ))
+                        # Building-level coords override complex-level if present
+                        bld_lat = self._get_text(building_elem, ("latitude", "Latitude")) or complex_lat
+                        bld_lon = self._get_text(building_elem, ("longitude", "Longitude")) or complex_lon
                         for flat_tag in ("flat", "Flat", "object", "Object", "offer", "Offer"):
                             flats = (building_elem.findall(flat_tag) or
                                      building_elem.findall(f".//{flat_tag}"))
                             if flats:
                                 for elem in flats:
                                     try:
-                                        # Filter non-apartments: housing_type != "0"
                                         ht = self._get_text(elem, ("housing_type", "HousingType"))
-                                        if ht and ht != "0":
-                                            continue
+                                        obj_type = self._map_housing_type(ht)
                                         obj = self._parse_object(
                                             elem,
                                             jk_name_override=jk_name,
                                             house_name_override=house_name,
                                             floors_total_override=building_floors,
                                             address_override=building_address,
+                                            lat_override=bld_lat,
+                                            lon_override=bld_lon,
+                                            object_type=obj_type,
                                         )
                                         if self._is_valid(obj):
                                             results.append(obj)
@@ -278,7 +286,15 @@ class DomClickParser(BaseParser):
                         if flats:
                             for elem in flats:
                                 try:
-                                    obj = self._parse_object(elem, jk_name_override=jk_name)
+                                    ht = self._get_text(elem, ("housing_type", "HousingType"))
+                                    obj_type = self._map_housing_type(ht)
+                                    obj = self._parse_object(
+                                        elem,
+                                        jk_name_override=jk_name,
+                                        lat_override=complex_lat,
+                                        lon_override=complex_lon,
+                                        object_type=obj_type,
+                                    )
                                     if self._is_valid(obj):
                                         results.append(obj)
                                     else:
@@ -399,6 +415,9 @@ class DomClickParser(BaseParser):
         house_name_override: str = "",
         floors_total_override: str = "",
         address_override: str = "",
+        lat_override: str = "",
+        lon_override: str = "",
+        object_type: str = "квартира",
     ) -> RawObject:
         obj = RawObject()
         g = lambda field: self._get_field(elem, field)
@@ -420,8 +439,10 @@ class DomClickParser(BaseParser):
         obj.sale_type       = g("sale_type") or None
         obj.decoration      = self._map_decoration(g("decoration"))
         obj.description     = g("description") or None
-        obj.latitude        = g("latitude") or None
-        obj.longitude       = g("longitude") or None
+        # Coordinates: flat-level takes priority, fall back to complex/building level
+        obj.latitude        = g("latitude") or lat_override or None
+        obj.longitude       = g("longitude") or lon_override or None
+        obj.object_type     = object_type
         obj.status          = self._map_status(g("status"))
         # address: from flat element or building level
         obj.address         = g("address") or address_override or None
@@ -539,6 +560,25 @@ class DomClickParser(BaseParser):
         return ""
 
     # ── Normalization helpers ───────────────────────────────────────────────
+
+    @staticmethod
+    def _map_housing_type(ht: str) -> str:
+        """Map DomClick housing_type code to Intrum object type string.
+
+        DomClick housing_type values:
+          0 → квартира
+          1 → апартаменты
+          2 → кладовка
+          3 → машиноместо
+        """
+        mapping = {
+            "": "квартира",
+            "0": "квартира",
+            "1": "апартаменты",
+            "2": "кладовка",
+            "3": "машиноместо",
+        }
+        return mapping.get((ht or "").strip(), "квартира")
 
     @staticmethod
     def _map_status(raw: str) -> str:

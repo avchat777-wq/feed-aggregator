@@ -18,18 +18,37 @@ from app.services.avito_lookup import avito_lookup
 
 logger = logging.getLogger(__name__)
 
-# Categories that are apartments/new buildings — everything else is skipped
+# Categories that are apartments/new buildings
 APARTMENT_CATEGORIES = {
     "квартиры", "квартира",
     "новостройки", "новостройка",
 }
 
-# Categories to explicitly skip (garages, parking, commercial etc.)
+# Parking / storage — include with proper object_type
+PARKING_CATEGORIES = {
+    "гаражи и машиноместа", "гараж", "машиноместо", "паркинг",
+}
+
+# Categories to explicitly skip (commercial, land, rooms, etc.)
 SKIP_CATEGORIES = {
-    "гаражи и машиноместа", "гараж", "машиноместо",
     "коммерческая недвижимость", "офис",
     "земельные участки", "дома, дачи, коттеджи",
     "комнаты",
+}
+
+# Category → object_type for Intrum
+CATEGORY_TYPE_MAP = {
+    "квартиры": "квартира",
+    "квартира": "квартира",
+    "новостройки": "квартира",
+    "новостройка": "квартира",
+    "гаражи и машиноместа": "машиноместо",
+    "гараж": "машиноместо",
+    "машиноместо": "машиноместо",
+    "паркинг": "машиноместо",
+    "кладовка": "кладовка",
+    "кладовки": "кладовка",
+    "апартаменты": "апартаменты",
 }
 
 
@@ -50,16 +69,17 @@ class AvitoParser(BaseParser):
         skipped_category = 0
         for ad in ads:
             try:
-                # Filter by category — skip non-apartments
+                # Filter by category
                 category = self._text(ad, "Category").lower().strip()
                 if category in SKIP_CATEGORIES:
                     skipped_category += 1
                     continue
-                if category and category not in APARTMENT_CATEGORIES:
-                    # Unknown category — allow it through but log
+                if category and category not in APARTMENT_CATEGORIES and category not in PARKING_CATEGORIES:
+                    # Unknown category — allow through but log
                     logger.debug(f"[{self.source_name}] Unknown category: {category!r}")
 
-                obj = self._parse_ad(ad)
+                obj_type = CATEGORY_TYPE_MAP.get(category, "квартира")
+                obj = self._parse_ad(ad, object_type=obj_type)
                 if obj and obj.price and obj.price != "0":
                     results.append(obj)
                 else:
@@ -82,11 +102,12 @@ class AvitoParser(BaseParser):
         el = parent.find(tag)
         return (el.text or "").strip() if el is not None else ""
 
-    def _parse_ad(self, ad) -> RawObject:
+    def _parse_ad(self, ad, object_type: str = "квартира") -> RawObject:
         t = lambda tag: self._text(ad, tag)
 
         obj = RawObject()
         obj.source_object_id = t("Id")
+        obj.object_type = object_type
 
         # CIAN/Avito JK ID from <NewDevelopmentId>
         dev_id = t("NewDevelopmentId") or None

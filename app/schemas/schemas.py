@@ -118,6 +118,9 @@ class ObjectResponse(BaseModel):
     description: Optional[str] = None
     address: Optional[str] = None
     photos: Optional[list[str]] = None
+    latitude: Optional[float] = None
+    longitude: Optional[float] = None
+    object_type: str = "квартира"
     phone: str
     status: str
     missing_count: int = 0

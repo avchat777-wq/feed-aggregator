@@ -43,6 +43,7 @@ class RawObject:
     phone: str = ""
     status: str = "active"
     address: Optional[str] = None  # raw address for fallback parsing
+    object_type: str = "квартира"  # квартира / кладовка / машиноместо / апартаменты
 
 
 class BaseParser(ABC):

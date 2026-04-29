@@ -73,6 +73,7 @@ class FeedGenerator:
 
         etree.SubElement(obj_el, "ExternalId").text = obj.external_id
         etree.SubElement(obj_el, "Category").text = "newBuildingFlatSale"
+        etree.SubElement(obj_el, "ObjectType").text = getattr(obj, "object_type", "квартира") or "квартира"
         etree.SubElement(obj_el, "DeveloperName").text = obj.developer_name
 
         jk = etree.SubElement(obj_el, "JKSchema")
@@ -88,8 +89,17 @@ class FeedGenerator:
             if obj.section_number:
                 etree.SubElement(flat, "SectionNumber").text = str(obj.section_number)
 
-        rooms_str = "Студия" if obj.rooms == 0 else f"{obj.rooms}-к кв"
-        name = f"{rooms_str}, {obj.total_area} м², {obj.jk_name}, этаж {obj.floor}"
+        obj_type = getattr(obj, "object_type", "квартира") or "квартира"
+        if obj_type == "машиноместо":
+            name = f"Машиноместо, {obj.total_area} м², {obj.jk_name}"
+        elif obj_type == "кладовка":
+            name = f"Кладовка, {obj.total_area} м², {obj.jk_name}"
+        elif obj_type == "апартаменты":
+            rooms_str = "Студия" if obj.rooms == 0 else f"{obj.rooms}-к апарт"
+            name = f"{rooms_str}, {obj.total_area} м², {obj.jk_name}, этаж {obj.floor}"
+        else:
+            rooms_str = "Студия" if obj.rooms == 0 else f"{obj.rooms}-к кв"
+            name = f"{rooms_str}, {obj.total_area} м², {obj.jk_name}, этаж {obj.floor}"
         etree.SubElement(obj_el, "Name").text = name
 
         etree.SubElement(obj_el, "FlatRoomsCount").text = str(obj.rooms)
@@ -114,6 +124,10 @@ class FeedGenerator:
 
         if obj.address:
             etree.SubElement(obj_el, "Address").text = obj.address
+
+        if obj.latitude and obj.longitude:
+            etree.SubElement(obj_el, "Latitude").text = str(obj.latitude)
+            etree.SubElement(obj_el, "Longitude").text = str(obj.longitude)
 
         if obj.description:
             etree.SubElement(obj_el, "Description").text = obj.description

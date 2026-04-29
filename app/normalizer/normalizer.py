@@ -55,6 +55,7 @@ class UnifiedObject:
     phone: str = ""
     status: str = "active"
     hash: str = ""
+    object_type: str = "квартира"  # квартира / кладовка / машиноместо / апартаменты
 
 
 # ──────────────────────────── Synonym tables ────────────────────────────
@@ -141,6 +142,7 @@ def normalize_object(
     u.photos = [url for url in raw.photos if url.startswith("http")]
     u.latitude = _parse_decimal(raw.latitude)
     u.longitude = _parse_decimal(raw.longitude)
+    u.object_type = (raw.object_type or "квартира").strip().lower()
     u.phone = _normalize_phone(phone_override or raw.phone)
     u.status = raw.status.strip().lower() if raw.status else "active"
 

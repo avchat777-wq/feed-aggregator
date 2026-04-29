@@ -41,6 +41,9 @@ class Object(Base):
     photos = Column(ARRAY(Text), nullable=True, comment="Array of photo URLs")
     latitude = Column(Numeric(10, 7), nullable=True)
     longitude = Column(Numeric(10, 7), nullable=True)
+    object_type = Column(String(50), nullable=False, default="квартира",
+                         server_default="квартира",
+                         comment="квартира / кладовка / машиноместо / апартаменты")
     phone = Column(String(20), nullable=False)
     status = Column(String(20), nullable=False, default="active",
                     comment="active, booked, sold, removed")
