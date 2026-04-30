@@ -132,6 +132,9 @@ class IdentificationEngine:
         now = datetime.now(timezone.utc)
 
         field_map = {
+            "jk_name": u.jk_name,
+            "jk_id_cian": u.jk_id_cian,
+            "house_name": u.house_name,
             "flat_number": u.flat_number,
             "floor": u.floor,
             "floors_total": u.floors_total,
