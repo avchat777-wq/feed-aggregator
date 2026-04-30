@@ -14,6 +14,7 @@ from app.api import admin
 from app.api.auth import ensure_admin_exists
 from app.scheduler.scheduler import start_scheduler, scheduler
 from app.services.avito_lookup import avito_lookup
+from app.services.dev_id_mapping import dev_id_mapping
 
 logging.basicConfig(
     level=logging.INFO,
@@ -34,6 +35,10 @@ async def lifespan(app: FastAPI):
 
     # Auto-load Avito developments lookup from disk (if file exists)
     avito_lookup.try_autoload()
+
+    # Load development_id → jk_name manual mappings from DB
+    async with async_session() as session:
+        await dev_id_mapping.reload(session)
 
     # Start scheduler
     start_scheduler()

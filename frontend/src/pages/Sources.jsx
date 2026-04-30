@@ -729,6 +729,139 @@ function AvitoDevelopmentsPanel() {
   );
 }
 
+// ── UnresolvedIdsPanel ────────────────────────────────────────────────────────
+
+function UnresolvedIdsPanel() {
+  const [rows, setRows]       = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [edits, setEdits]     = useState({});
+  const [saving, setSaving]   = useState({});
+  const [saved, setSaved]     = useState({});
+  const [saveError, setSaveError] = useState({});
+
+  const load = () => {
+    setLoading(true);
+    api.get("/api/admin/unresolved-ids")
+      .then(r => setRows(r.data))
+      .catch(() => setRows([]))
+      .finally(() => setLoading(false));
+  };
+
+  useEffect(() => { load(); }, []);
+
+  const handleSave = async (devId) => {
+    const jkName = (edits[devId] || "").trim();
+    if (!jkName) return;
+    setSaving(s => ({ ...s, [devId]: true }));
+    setSaveError(e => ({ ...e, [devId]: null }));
+    try {
+      await api.post("/api/admin/dev-id-mappings", { development_id: devId, jk_name: jkName });
+      setSaved(s => ({ ...s, [devId]: true }));
+      setTimeout(() => { setSaved(s => ({ ...s, [devId]: false })); load(); }, 1500);
+    } catch (err) {
+      setSaveError(e => ({ ...e, [devId]: err.response?.data?.detail || "Ошибка" }));
+    } finally {
+      setSaving(s => ({ ...s, [devId]: false }));
+    }
+  };
+
+  const unresolved = rows.filter(r => !r.already_mapped);
+  const resolved   = rows.filter(r => r.already_mapped);
+
+  if (loading) return (
+    <div className="bg-white rounded-xl border border-gray-200 p-4 text-sm text-gray-400">
+      Загрузка нерезолвленных ID...
+    </div>
+  );
+
+  if (rows.length === 0) return (
+    <div className="bg-white rounded-xl border border-gray-200 p-4">
+      <p className="text-sm font-semibold text-gray-800">🔗 Нерезолвленные NewDevelopmentId</p>
+      <p className="text-xs text-green-600 mt-1">✅ Все объекты имеют название ЖК</p>
+    </div>
+  );
+
+  return (
+    <div className="bg-white rounded-xl border border-gray-200 p-4">
+      <div className="flex items-center justify-between mb-3">
+        <div>
+          <p className="text-sm font-semibold text-gray-800">🔗 Нерезолвленные NewDevelopmentId</p>
+          <p className="text-xs text-gray-500 mt-0.5">
+            Объекты без ЖК — введите название вручную. Применяется ко всем источникам с этим ID.
+          </p>
+        </div>
+        <button onClick={load} className="text-xs text-gray-400 hover:text-gray-600">↻ Обновить</button>
+      </div>
+
+      {unresolved.length > 0 && (
+        <div className="overflow-x-auto">
+          <table className="w-full text-xs border-collapse">
+            <thead>
+              <tr className="border-b border-gray-100 text-gray-500 text-left">
+                <th className="py-1.5 pr-3 font-medium">Dev ID</th>
+                <th className="py-1.5 pr-3 font-medium">Объектов</th>
+                <th className="py-1.5 pr-3 font-medium">Застройщик</th>
+                <th className="py-1.5 pr-3 font-medium">Адрес</th>
+                <th className="py-1.5 font-medium">Название ЖК</th>
+              </tr>
+            </thead>
+            <tbody>
+              {unresolved.map(row => (
+                <tr key={row.development_id} className="border-b border-gray-50 hover:bg-gray-50">
+                  <td className="py-2 pr-3 font-mono text-gray-600">{row.development_id}</td>
+                  <td className="py-2 pr-3 text-gray-700 font-medium">{row.object_count}</td>
+                  <td className="py-2 pr-3 text-gray-600">{row.developer_name || "—"}</td>
+                  <td className="py-2 pr-3 text-gray-500 max-w-xs truncate" title={row.sample_address}>
+                    {row.sample_address || "—"}
+                  </td>
+                  <td className="py-2">
+                    <div className="flex gap-1 items-center">
+                      <input
+                        type="text"
+                        placeholder="ЖК «Название»"
+                        value={edits[row.development_id] || ""}
+                        onChange={e => setEdits(ed => ({ ...ed, [row.development_id]: e.target.value }))}
+                        onKeyDown={e => e.key === "Enter" && handleSave(row.development_id)}
+                        className="border border-gray-200 rounded px-2 py-1 text-xs w-48 focus:outline-none focus:border-blue-400"
+                      />
+                      <button
+                        onClick={() => handleSave(row.development_id)}
+                        disabled={saving[row.development_id] || !edits[row.development_id]?.trim()}
+                        className="px-2 py-1 rounded text-xs bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-40"
+                      >
+                        {saved[row.development_id] ? "✓" : saving[row.development_id] ? "..." : "Сохранить"}
+                      </button>
+                      {saveError[row.development_id] && (
+                        <span className="text-red-500 text-xs">{saveError[row.development_id]}</span>
+                      )}
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {resolved.length > 0 && (
+        <details className="mt-3">
+          <summary className="text-xs text-gray-400 cursor-pointer hover:text-gray-600">
+            ✅ Уже сопоставлено: {resolved.length} ID
+          </summary>
+          <div className="mt-2 space-y-1">
+            {resolved.map(row => (
+              <div key={row.development_id} className="text-xs text-gray-500 flex gap-2">
+                <span className="font-mono">{row.development_id}</span>
+                <span className="text-gray-400">({row.object_count} объектов, {row.developer_name})</span>
+              </div>
+            ))}
+          </div>
+        </details>
+      )}
+    </div>
+  );
+}
+
 // ── Main page ─────────────────────────────────────────────────────────────────
 
 export default function Sources() {
@@ -807,6 +940,9 @@ export default function Sources() {
 
       {/* Avito developments lookup panel */}
       <AvitoDevelopmentsPanel />
+
+      {/* Unresolved development IDs panel */}
+      <UnresolvedIdsPanel />
 
       {/* Stats strip */}
       <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
