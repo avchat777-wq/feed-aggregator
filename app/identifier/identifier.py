@@ -110,7 +110,11 @@ class IdentificationEngine:
         return result.scalar_one_or_none()
 
     async def _find_fuzzy_match(self, u: UnifiedObject) -> list[Object]:
-        """Step 2: fuzzy match — same source + floor + area ±0.5 + rooms + object_type."""
+        """Step 2: fuzzy match — same source + house + floor + area ±0.5 + rooms + object_type.
+
+        house_name is required to prevent apartments/storage rooms in different
+        buildings from being incorrectly merged when they share floor/rooms/area.
+        """
         area_low = u.total_area - Decimal("0.5")
         area_high = u.total_area + Decimal("0.5")
         obj_type = getattr(u, "object_type", "квартира") or "квартира"
@@ -119,6 +123,7 @@ class IdentificationEngine:
             and_(
                 Object.source_id == u.source_id,
                 Object.jk_name == u.jk_name,
+                Object.house_name == (u.house_name or ""),
                 Object.floor == u.floor,
                 Object.rooms == u.rooms,
                 Object.total_area >= area_low,
