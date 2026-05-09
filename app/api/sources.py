@@ -12,6 +12,7 @@ from app.api.auth import get_current_user, require_admin
 from app.models.source import Source
 from app.models.object import Object
 from app.models.jk_synonym import JkSynonym
+from app.models.mapping import Mapping
 from app.parsers import get_parser
 from app.scheduler.scheduler import run_preflight
 from app.schemas.schemas import (
@@ -114,18 +115,46 @@ async def test_source(
         raise HTTPException(status_code=400, detail="Source has no URL")
 
     try:
+        import urllib.parse as _urlparse, re as _re
+        fetch_url = source.url
+
         async with httpx.AsyncClient(timeout=30, follow_redirects=True) as client:
-            resp = await client.get(source.url)
+            # Resolve Yandex Disk public link to direct download URL
+            if "disk.yandex.ru" in fetch_url or "yadi.sk" in fetch_url:
+                api_resp = await client.get(
+                    "https://cloud-api.yandex.net/v1/disk/public/resources/download"
+                    f"?public_key={_urlparse.quote(fetch_url, safe='')}"
+                )
+                if api_resp.status_code == 200:
+                    fetch_url = api_resp.json().get("href", fetch_url)
+
+            # Resolve Google Drive sharing link to direct download
+            elif "drive.google.com/file/d/" in fetch_url and "/view" in fetch_url:
+                m = _re.search(r"/file/d/([^/]+)", fetch_url)
+                if m:
+                    fetch_url = f"https://drive.google.com/uc?export=download&id={m.group(1)}"
+
+            resp = await client.get(fetch_url)
             resp.raise_for_status()
             content = resp.content
     except Exception as e:
         return {"success": False, "error": str(e), "objects": []}
 
+    # Load DB-level field mappings and merge into mapping_config.fields
+    db_map_result = await db.execute(
+        select(Mapping).where(Mapping.source_id == source.id)
+    )
+    db_mappings = db_map_result.scalars().all()
+    mapping_config = dict(source.mapping_config or {})
+    if db_mappings:
+        db_fields = {m.source_field: m.target_field for m in db_mappings}
+        mapping_config["fields"] = {**(mapping_config.get("fields") or {}), **db_fields}
+
     parser_cls = get_parser(source.type)
     parser = parser_cls({
         "name": source.name,
         "developer_name": source.developer_name,
-        "mapping_config": source.mapping_config,
+        "mapping_config": mapping_config,
         "phone_override": source.phone_override,
     })
     raw_objects = parser.parse(content)

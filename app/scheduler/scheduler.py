@@ -37,6 +37,7 @@ from app.database import async_session
 from app.models.source import Source
 from app.models.sync_log import SyncLog
 from app.models.jk_synonym import JkSynonym
+from app.models.mapping import Mapping
 from app.parsers import get_parser
 from app.normalizer import normalize_object
 from app.identifier import IdentificationEngine
@@ -369,8 +370,14 @@ class SyncOrchestrator:
                 logger.warning(f"Failed to save cache for {source.name}: {e}")
 
         # ── Step 3: Parse ────────────────────────────────────────────────────
+        # Load DB-level field mappings for this source
+        db_mappings_result = await session.execute(
+            select(Mapping).where(Mapping.source_id == source.id)
+        )
+        db_mappings = db_mappings_result.scalars().all()
+
         parser_cls = get_parser(source.type)
-        parser = parser_cls(self._source_to_dict(source))
+        parser = parser_cls(self._source_to_dict(source, db_mappings))
         raw_objects = parser.parse(content)
 
         if parser.errors:
@@ -485,18 +492,61 @@ class SyncOrchestrator:
         logger.info(f"Source {source.name}: {stats}")
         return stats
 
+    @staticmethod
+    def _resolve_url(url: str) -> str:
+        """Convert cloud sharing links to direct download URLs."""
+        # Yandex Disk: /i/ or /d/ public links → Yandex API direct download
+        if "disk.yandex.ru" in url or "yadi.sk" in url:
+            import urllib.parse
+            api_url = (
+                "https://cloud-api.yandex.net/v1/disk/public/resources/download"
+                f"?public_key={urllib.parse.quote(url, safe='')}"
+            )
+            return api_url  # We'll resolve it at fetch time
+        # Google Drive: /file/d/ID/view → direct download
+        if "drive.google.com/file/d/" in url and "/view" in url:
+            import re
+            m = re.search(r"/file/d/([^/]+)", url)
+            if m:
+                return f"https://drive.google.com/uc?export=download&id={m.group(1)}"
+        return url
+
     async def _fetch_content(self, source: Source) -> Optional[bytes]:
         """Fetch feed content from URL, with encoding detection."""
         if not source.url:
             logger.error(f"Source {source.name} has no URL configured")
             return None
 
+        url = source.url
         try:
             async with httpx.AsyncClient(
                 timeout=settings.http_timeout,
                 follow_redirects=True,
             ) as client:
-                resp = await client.get(source.url)
+                # Yandex Disk: resolve public link to direct download URL via API
+                if "disk.yandex.ru" in url or "yadi.sk" in url:
+                    import urllib.parse
+                    api_url = (
+                        "https://cloud-api.yandex.net/v1/disk/public/resources/download"
+                        f"?public_key={urllib.parse.quote(url, safe='')}"
+                    )
+                    api_resp = await client.get(api_url)
+                    if api_resp.status_code == 200:
+                        url = api_resp.json().get("href", url)
+                        logger.info(f"Yandex Disk resolved to: {url[:80]}…")
+                    else:
+                        logger.warning(
+                            f"Yandex Disk API returned {api_resp.status_code} for {source.name}"
+                        )
+
+                # Google Drive: convert sharing link to direct download
+                elif "drive.google.com/file/d/" in url and "/view" in url:
+                    import re
+                    m = re.search(r"/file/d/([^/]+)", url)
+                    if m:
+                        url = f"https://drive.google.com/uc?export=download&id={m.group(1)}"
+
+                resp = await client.get(url)
                 resp.raise_for_status()
                 content = resp.content
 
@@ -525,13 +575,22 @@ class SyncOrchestrator:
         return cached
 
     @staticmethod
-    def _source_to_dict(source: Source) -> dict:
+    def _source_to_dict(source: Source, db_mappings: list | None = None) -> dict:
+        mapping_config = dict(source.mapping_config or {})
+
+        # Merge DB-level field mappings into mapping_config.fields
+        # DB mappings take priority over mapping_config.fields from source JSON
+        if db_mappings:
+            db_fields = {m.source_field: m.target_field for m in db_mappings}
+            existing_fields = mapping_config.get("fields") or {}
+            mapping_config["fields"] = {**existing_fields, **db_fields}
+
         return {
             "name": source.name,
             "developer_name": source.developer_name,
             "type": source.type,
             "url": source.url,
-            "mapping_config": source.mapping_config,
+            "mapping_config": mapping_config,
             "phone_override": source.phone_override,
         }
 
