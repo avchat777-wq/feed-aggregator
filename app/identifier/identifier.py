@@ -95,12 +95,14 @@ class IdentificationEngine:
 
     async def _find_exact_match(self, u: UnifiedObject) -> Optional[Object]:
         """Step 1: exact composite key match."""
+        obj_type = getattr(u, "object_type", "квартира") or "квартира"
         stmt = select(Object).where(
             and_(
                 Object.source_id == u.source_id,
                 Object.jk_name == u.jk_name,
                 Object.house_name == (u.house_name or ""),
                 Object.flat_number == u.flat_number,
+                Object.object_type == obj_type,
                 Object.status != "removed",
             )
         )
@@ -108,9 +110,10 @@ class IdentificationEngine:
         return result.scalar_one_or_none()
 
     async def _find_fuzzy_match(self, u: UnifiedObject) -> list[Object]:
-        """Step 2: fuzzy match — same source + floor + area ±0.5 + rooms."""
+        """Step 2: fuzzy match — same source + floor + area ±0.5 + rooms + object_type."""
         area_low = u.total_area - Decimal("0.5")
         area_high = u.total_area + Decimal("0.5")
+        obj_type = getattr(u, "object_type", "квартира") or "квартира"
 
         stmt = select(Object).where(
             and_(
@@ -120,6 +123,7 @@ class IdentificationEngine:
                 Object.rooms == u.rooms,
                 Object.total_area >= area_low,
                 Object.total_area <= area_high,
+                Object.object_type == obj_type,
                 Object.status != "removed",
             )
         )
