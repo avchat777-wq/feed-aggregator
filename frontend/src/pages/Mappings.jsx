@@ -7,7 +7,7 @@ const TARGET_FIELDS = [
   'house_name', 'section_number', 'flat_number', 'floor', 'floors_total',
   'rooms', 'total_area', 'living_area', 'kitchen_area', 'price',
   'sale_type', 'decoration', 'description', 'photos', 'phone', 'status',
-  'latitude', 'longitude',
+  'object_type', 'latitude', 'longitude',
 ]
 
 export default function Mappings() {
