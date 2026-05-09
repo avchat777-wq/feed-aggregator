@@ -12,6 +12,9 @@ from app.scheduler.scheduler import SyncOrchestrator
 
 router = APIRouter(prefix="/api/feed", tags=["feed"])
 
+# Global lock — prevents concurrent manual sync runs
+_sync_lock = asyncio.Lock()
+
 
 @router.get("/url")
 async def get_feed_url(_=Depends(get_current_user)):
@@ -34,11 +37,24 @@ async def download_feed(_=Depends(get_current_user)):
 
 @router.post("/sync")
 async def trigger_sync(_=Depends(require_admin)):
-    """Manually trigger a full synchronization cycle."""
-    orchestrator = SyncOrchestrator()
-    # Run in background
-    asyncio.create_task(orchestrator.run_full_sync())
-    return {"status": "sync_started", "message": "Synchronization started in background"}
+    """Manually trigger a full synchronization cycle.
+
+    Returns 409 if a sync is already running — prevents concurrent runs
+    that would cause objects to be incorrectly marked as missing.
+    """
+    if _sync_lock.locked():
+        raise HTTPException(
+            status_code=409,
+            detail="Синхронизация уже выполняется. Подождите завершения.",
+        )
+
+    async def _run():
+        async with _sync_lock:
+            orchestrator = SyncOrchestrator()
+            await orchestrator.run_full_sync()
+
+    asyncio.create_task(_run())
+    return {"status": "sync_started", "message": "Синхронизация запущена"}
 
 
 @router.get("/preview")
