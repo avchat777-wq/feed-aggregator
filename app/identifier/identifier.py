@@ -57,8 +57,11 @@ class IdentificationEngine:
             result.changes = await self._update_object(existing, unified)
             return result
 
-        # Step 2: Fuzzy match (renumbering)
-        fuzzy = await self._find_fuzzy_match(unified)
+        # Step 2: Fuzzy match (renumbering detection) — DISABLED.
+        # Fuzzy match causes incorrect merging of apartments with identical
+        # floor/rooms/area (e.g. standard layouts with two same-size flats per floor).
+        # Excel sources always provide explicit flat_number → no need for fuzzy.
+        fuzzy = []
         if fuzzy:
             if len(fuzzy) == 1:
                 candidate = fuzzy[0]
