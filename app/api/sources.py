@@ -88,10 +88,30 @@ async def delete_source(
     db: AsyncSession = Depends(get_db),
     _=Depends(require_admin),
 ):
+    from sqlalchemy import delete as sql_delete
+    from app.models.object import ObjectHistory
+
     result = await db.execute(select(Source).where(Source.id == source_id))
     source = result.scalar_one_or_none()
     if not source:
         raise HTTPException(status_code=404, detail="Source not found")
+
+    # Cascade: delete object history and objects before deleting source
+    obj_ids_result = await db.execute(
+        select(Object.id).where(Object.source_id == source_id)
+    )
+    obj_ids = [row[0] for row in obj_ids_result.all()]
+    if obj_ids:
+        await db.execute(
+            sql_delete(ObjectHistory).where(ObjectHistory.object_id.in_(obj_ids))
+        )
+        await db.execute(
+            sql_delete(Object).where(Object.source_id == source_id)
+        )
+
+    # Also delete mappings and synonyms tied to this source
+    await db.execute(sql_delete(Mapping).where(Mapping.source_id == source_id))
+
     await db.delete(source)
 
 

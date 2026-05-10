@@ -921,9 +921,13 @@ export default function Sources() {
   useEffect(load, []);
 
   const handleDelete = async source => {
-    if (!confirm(`Удалить источник «${source.name}»?`)) return;
-    await api.delete(`/api/sources/${source.id}`);
-    load();
+    if (!confirm(`Удалить источник «${source.name}»?\n\nВсе объекты и история изменений этого источника будут удалены безвозвратно.`)) return;
+    try {
+      await api.delete(`/api/sources/${source.id}`);
+      load();
+    } catch (e) {
+      alert(`Ошибка при удалении: ${e.response?.data?.detail || e.message}`);
+    }
   };
 
   const handleTest = async source => {
