@@ -28,6 +28,7 @@ services:
     volumes:
       - feed_output:/app/static/feed
       - feed_cache:/app/cache        # raw feed cache (fallback on source errors)
+      - app_data:/app/data           # persistent data (avito справочник и др.)
       - ./app:/app/app
     command: >
       sh -c "alembic upgrade head &&
@@ -47,3 +48,4 @@ volumes:
   pgdata:
   feed_output:
   feed_cache:
+  app_data:
