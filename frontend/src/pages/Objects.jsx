@@ -84,12 +84,7 @@ export default function Objects() {
                 <td className="p-3">{o.jk_name}</td>
                 <td className="p-3">{o.flat_number}</td>
                 <td className="p-3">{o.floor}{o.floors_total ? `/${o.floors_total}` : ''}</td>
-                <td className="p-3">
-                  {o.object_type && o.object_type !== 'квартира'
-                    ? <span className="text-xs text-purple-600 font-medium">{o.object_type}</span>
-                    : (o.rooms === 0 ? 'Ст.' : o.rooms)
-                  }
-                </td>
+                <td className="p-3">{o.rooms === 0 ? 'Ст.' : o.rooms}</td>
                 <td className="p-3">{o.total_area} м²</td>
                 <td className="p-3 font-medium">{o.price?.toLocaleString('ru')} ₽</td>
                 <td className="p-3">
@@ -118,11 +113,8 @@ export default function Objects() {
               <p className="text-gray-500">{selected.developer_name} · {selected.jk_name} · кв. {selected.flat_number}</p>
             </div>
             <div className="p-6 grid grid-cols-2 gap-3 text-sm">
-              <div><span className="text-gray-500">Тип:</span> {selected.object_type || 'квартира'}</div>
               <div><span className="text-gray-500">Этаж:</span> {selected.floor}/{selected.floors_total || '?'}</div>
-              {selected.object_type === 'квартира' || !selected.object_type ? (
-                <div><span className="text-gray-500">Комнат:</span> {selected.rooms === 0 ? 'Студия' : selected.rooms}</div>
-              ) : null}
+              <div><span className="text-gray-500">Комнат:</span> {selected.rooms === 0 ? 'Студия' : selected.rooms}</div>
               <div><span className="text-gray-500">Площадь:</span> {selected.total_area} м²</div>
               <div><span className="text-gray-500">Цена:</span> {selected.price?.toLocaleString('ru')} ₽</div>
               <div><span className="text-gray-500">Цена/м²:</span> {selected.price_per_sqm?.toLocaleString('ru')} ₽</div>

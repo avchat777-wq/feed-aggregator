@@ -122,7 +122,7 @@ def normalize_object(
         u.jk_name = jk_synonyms.get(raw_jk.lower(), raw_jk)
     else:
         u.jk_name = raw_jk
-    u.jk_id_cian = _parse_int(raw.jk_id_cian)
+    u.jk_id_cian = _parse_int(raw.jk_id_cian) or None  # store NULL, not 0, when absent
     u.house_name = raw.house_name.strip() if raw.house_name else None
     u.section_number = raw.section_number.strip() if raw.section_number else None
     u.flat_number = raw.flat_number.strip()

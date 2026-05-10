@@ -97,7 +97,13 @@ class IdentificationEngine:
         return result
 
     async def _find_exact_match(self, u: UnifiedObject) -> Optional[Object]:
-        """Step 1: exact composite key match."""
+        """Step 1: exact composite key match.
+
+        Fallback: if the feed now provides a jk_name but existing objects for
+        this source have an empty jk_name (created before parser was fixed),
+        match by source_id + flat_number + object_type so they are updated
+        in-place rather than duplicated.
+        """
         obj_type = getattr(u, "object_type", "квартира") or "квартира"
         stmt = select(Object).where(
             and_(
@@ -110,7 +116,27 @@ class IdentificationEngine:
             )
         )
         result = await self.session.execute(stmt)
-        return result.scalar_one_or_none()
+        match = result.scalar_one_or_none()
+        if match:
+            return match
+
+        # Migration fallback: if parser was previously broken (jk_name was empty),
+        # existing objects have empty jk_name. Match by source + flat + type
+        # to update them in-place instead of creating duplicates.
+        if u.jk_name:
+            stmt2 = select(Object).where(
+                and_(
+                    Object.source_id == u.source_id,
+                    (Object.jk_name == "") | Object.jk_name.is_(None),
+                    Object.flat_number == u.flat_number,
+                    Object.object_type == obj_type,
+                    Object.status != "removed",
+                )
+            )
+            result2 = await self.session.execute(stmt2)
+            return result2.scalar_one_or_none()
+
+        return None
 
     async def _find_fuzzy_match(self, u: UnifiedObject) -> list[Object]:
         """Step 2: fuzzy match — same source + house + floor + area ±0.5 + rooms + object_type.
