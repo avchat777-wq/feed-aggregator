@@ -149,25 +149,19 @@ async def save_dev_id_mapping(
                 notes=payload.notes,
             ))
 
-        # Immediately patch existing objects that have this dev_id but no jk_name.
-        # jk_id_cian is Integer in the DB, so cast dev_id to int before comparing.
-        patched_count = 0
-        try:
-            dev_id_int = int(dev_id)
-            upd = (
-                update(Object)
-                .where(
-                    and_(
-                        Object.jk_id_cian == dev_id_int,
-                        (Object.jk_name == "") | Object.jk_name.is_(None),
-                    )
+        # Immediately patch existing objects that have this dev_id but no jk_name
+        upd = (
+            update(Object)
+            .where(
+                and_(
+                    Object.jk_id_cian == dev_id,
+                    (Object.jk_name == "") | Object.jk_name.is_(None),
                 )
-                .values(jk_name=jk)
             )
-            upd_result = await session.execute(upd)
-            patched_count = upd_result.rowcount
-        except (ValueError, TypeError):
-            pass  # non-numeric dev_id — no objects to patch
+            .values(jk_name=jk)
+        )
+        upd_result = await session.execute(upd)
+        patched_count = upd_result.rowcount
 
         await session.commit()
 
@@ -200,15 +194,11 @@ async def reapply_all_dev_id_mappings(_=Depends(get_current_user)):
         total_patched = 0
         details = []
         for m in mappings:
-            try:
-                dev_id_int = int(m.development_id)
-            except (ValueError, TypeError):
-                continue  # skip non-numeric IDs
             upd = (
                 update(Object)
                 .where(
                     and_(
-                        Object.jk_id_cian == dev_id_int,
+                        Object.jk_id_cian == m.development_id,
                         (Object.jk_name == "") | Object.jk_name.is_(None),
                     )
                 )
