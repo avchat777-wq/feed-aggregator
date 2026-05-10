@@ -238,7 +238,15 @@ class DomClickParser(BaseParser):
                 )
                 if buildings:
                     for building_elem in buildings:
-                        house_name = self._get_building_name(building_elem)
+                        building_name = self._get_building_name(building_elem)
+                        # If <complex><name> is empty, the building name IS the JK name
+                        # (macroserver.ru format: complex has no name, building carries it)
+                        if jk_name:
+                            effective_jk = jk_name
+                            house_name = building_name
+                        else:
+                            effective_jk = building_name
+                            house_name = ""
                         # Pick up floors_total and address from <building> level
                         # since they're not repeated inside each <flat>
                         building_floors = self._get_text(building_elem, (
@@ -260,7 +268,7 @@ class DomClickParser(BaseParser):
                                         obj_type = self._map_housing_type(ht)
                                         obj = self._parse_object(
                                             elem,
-                                            jk_name_override=jk_name,
+                                            jk_name_override=effective_jk,
                                             house_name_override=house_name,
                                             floors_total_override=building_floors,
                                             address_override=building_address,
