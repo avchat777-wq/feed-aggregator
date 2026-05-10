@@ -72,7 +72,6 @@ class YandexParser(BaseParser):
         obj = RawObject()
         obj.source_object_id = offer.get("internal-id", "") or offer.get("id", "")
         obj.jk_name = text("building-name") or text("yandex-building-name")
-        obj.flat_number = text("apartment") or text("flat-number") or obj.source_object_id
         obj.floor = text("floor")
         obj.floors_total = text("floors-total") or text("floors-offered") or None
         obj.rooms = text("rooms") or text("rooms-offered")
@@ -84,12 +83,19 @@ class YandexParser(BaseParser):
         obj.decoration = text("renovation") or text("decoration") or None
         obj.sale_type = text("deal-status") or None
 
-        # Location
+        # Location — parse first so we can use it for apartment number lookup
         location = find_el("location")
         if location is not None:
             obj.address = text("address", location)
             obj.latitude = text("latitude", location) or None
             obj.longitude = text("longitude", location) or None
+
+        # Apartment number: try direct child first, then inside <location> (Широта/domoplaner format)
+        obj.flat_number = (
+            text("apartment") or text("flat-number") or
+            (text("apartment", location) if location is not None else "") or
+            obj.source_object_id
+        )
 
         # Phone
         agent = find_el("sales-agent")
