@@ -8,7 +8,7 @@ from typing import Optional
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
 from pydantic import BaseModel
-from sqlalchemy import select, func, and_
+from sqlalchemy import select, func, and_, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.auth import get_current_user
@@ -121,7 +121,12 @@ async def save_dev_id_mapping(
     payload: DevIdMappingIn,
     _=Depends(get_current_user),
 ):
-    """Create or update a development_id → jk_name mapping."""
+    """Create or update a development_id → jk_name mapping.
+
+    Also immediately applies the jk_name to all existing objects in DB
+    that have this development_id but empty jk_name — prevents duplicates
+    on the next sync cycle.
+    """
     dev_id = payload.development_id.strip()
     jk = payload.jk_name.strip()
     if not dev_id or not jk:
@@ -143,13 +148,71 @@ async def save_dev_id_mapping(
                 jk_name=jk,
                 notes=payload.notes,
             ))
+
+        # Immediately patch existing objects that have this dev_id but no jk_name
+        upd = (
+            update(Object)
+            .where(
+                and_(
+                    Object.jk_id_cian == dev_id,
+                    (Object.jk_name == "") | Object.jk_name.is_(None),
+                )
+            )
+            .values(jk_name=jk)
+        )
+        upd_result = await session.execute(upd)
+        patched_count = upd_result.rowcount
+
         await session.commit()
 
         # Reload in-memory lookup
         await dev_id_mapping.reload(session)
 
-    logger.info(f"DevIdMapping saved: {dev_id!r} → {jk!r}")
-    return {"success": True, "development_id": dev_id, "jk_name": jk}
+    logger.info(
+        f"DevIdMapping saved: {dev_id!r} → {jk!r}, "
+        f"patched {patched_count} existing objects"
+    )
+    return {
+        "success": True,
+        "development_id": dev_id,
+        "jk_name": jk,
+        "patched_objects": patched_count,
+    }
+
+
+@router.post("/dev-id-mappings/reapply-all")
+async def reapply_all_dev_id_mappings(_=Depends(get_current_user)):
+    """Reapply all saved dev_id_mappings to existing objects in DB.
+
+    Useful after bulk-importing mappings: patches every object that has a
+    known jk_id_cian but still carries an empty jk_name.
+    """
+    async with async_session() as session:
+        result = await session.execute(select(DevelopmentIdMapping))
+        mappings = result.scalars().all()
+
+        total_patched = 0
+        details = []
+        for m in mappings:
+            upd = (
+                update(Object)
+                .where(
+                    and_(
+                        Object.jk_id_cian == m.development_id,
+                        (Object.jk_name == "") | Object.jk_name.is_(None),
+                    )
+                )
+                .values(jk_name=m.jk_name)
+            )
+            r = await session.execute(upd)
+            if r.rowcount:
+                details.append({"development_id": m.development_id, "jk_name": m.jk_name, "patched": r.rowcount})
+                total_patched += r.rowcount
+
+        await session.commit()
+
+    logger.info(f"Reapply-all: patched {total_patched} objects across {len(details)} mappings")
+    return {"success": True, "total_patched": total_patched, "details": details}
 
 
 @router.delete("/dev-id-mappings/{development_id}")
@@ -189,6 +252,7 @@ async def get_unresolved_ids(_=Depends(get_current_user)):
                 func.count(Object.id).label("object_count"),
                 func.min(Object.address).label("sample_address"),
                 func.min(Object.developer_name).label("developer_name"),
+                func.min(Object.object_type).label("sample_object_type"),
             )
             .where(
                 and_(
@@ -215,6 +279,7 @@ async def get_unresolved_ids(_=Depends(get_current_user)):
                 "object_count": row.object_count,
                 "sample_address": row.sample_address,
                 "developer_name": row.developer_name,
+                "sample_object_type": row.sample_object_type,
                 "already_mapped": str(row.jk_id_cian) in already_mapped,
             }
             for row in rows

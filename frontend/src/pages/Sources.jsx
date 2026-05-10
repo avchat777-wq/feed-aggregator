@@ -732,12 +732,15 @@ function AvitoDevelopmentsPanel() {
 // ── UnresolvedIdsPanel ────────────────────────────────────────────────────────
 
 function UnresolvedIdsPanel() {
-  const [rows, setRows]       = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [edits, setEdits]     = useState({});
-  const [saving, setSaving]   = useState({});
-  const [saved, setSaved]     = useState({});
+  const [rows, setRows]           = useState([]);
+  const [loading, setLoading]     = useState(true);
+  const [edits, setEdits]         = useState({});
+  const [saving, setSaving]       = useState({});
+  const [saved, setSaved]         = useState({});
   const [saveError, setSaveError] = useState({});
+  const [patchInfo, setPatchInfo] = useState({});   // devId → patched_objects count
+  const [reapplying, setReapplying] = useState(false);
+  const [reapplyMsg, setReapplyMsg] = useState(null);
 
   const load = () => {
     setLoading(true);
@@ -755,13 +758,30 @@ function UnresolvedIdsPanel() {
     setSaving(s => ({ ...s, [devId]: true }));
     setSaveError(e => ({ ...e, [devId]: null }));
     try {
-      await api.post("/api/admin/dev-id-mappings", { development_id: devId, jk_name: jkName });
+      const resp = await api.post("/api/admin/dev-id-mappings", { development_id: devId, jk_name: jkName });
+      const patched = resp.data?.patched_objects ?? 0;
+      setPatchInfo(p => ({ ...p, [devId]: patched }));
       setSaved(s => ({ ...s, [devId]: true }));
-      setTimeout(() => { setSaved(s => ({ ...s, [devId]: false })); load(); }, 1500);
+      setTimeout(() => { setSaved(s => ({ ...s, [devId]: false })); load(); }, 2000);
     } catch (err) {
       setSaveError(e => ({ ...e, [devId]: err.response?.data?.detail || "Ошибка" }));
     } finally {
       setSaving(s => ({ ...s, [devId]: false }));
+    }
+  };
+
+  const handleReapplyAll = async () => {
+    setReapplying(true);
+    setReapplyMsg(null);
+    try {
+      const resp = await api.post("/api/admin/dev-id-mappings/reapply-all");
+      const n = resp.data?.total_patched ?? 0;
+      setReapplyMsg(n > 0 ? `✅ Обновлено объектов: ${n}` : "✅ Нечего обновлять");
+      load();
+    } catch {
+      setReapplyMsg("❌ Ошибка при применении");
+    } finally {
+      setReapplying(false);
     }
   };
 
@@ -787,10 +807,21 @@ function UnresolvedIdsPanel() {
         <div>
           <p className="text-sm font-semibold text-gray-800">🔗 Нерезолвленные NewDevelopmentId</p>
           <p className="text-xs text-gray-500 mt-0.5">
-            Объекты без ЖК — введите название вручную. Применяется ко всем источникам с этим ID.
+            Объекты без ЖК — введите название вручную. После сохранения объекты в базе обновляются сразу.
           </p>
+          {reapplyMsg && <p className="text-xs mt-1 text-green-600">{reapplyMsg}</p>}
         </div>
-        <button onClick={load} className="text-xs text-gray-400 hover:text-gray-600">↻ Обновить</button>
+        <div className="flex gap-2 items-center">
+          <button
+            onClick={handleReapplyAll}
+            disabled={reapplying}
+            title="Применить все сохранённые маппинги к объектам в базе"
+            className="text-xs px-2 py-1 rounded bg-blue-50 text-blue-600 hover:bg-blue-100 disabled:opacity-40"
+          >
+            {reapplying ? "..." : "Применить все"}
+          </button>
+          <button onClick={load} className="text-xs text-gray-400 hover:text-gray-600">↻ Обновить</button>
+        </div>
       </div>
 
       {unresolved.length > 0 && (
@@ -800,6 +831,7 @@ function UnresolvedIdsPanel() {
               <tr className="border-b border-gray-100 text-gray-500 text-left">
                 <th className="py-1.5 pr-3 font-medium">Dev ID</th>
                 <th className="py-1.5 pr-3 font-medium">Объектов</th>
+                <th className="py-1.5 pr-3 font-medium">Тип</th>
                 <th className="py-1.5 pr-3 font-medium">Застройщик</th>
                 <th className="py-1.5 pr-3 font-medium">Адрес</th>
                 <th className="py-1.5 font-medium">Название ЖК</th>
@@ -810,6 +842,7 @@ function UnresolvedIdsPanel() {
                 <tr key={row.development_id} className="border-b border-gray-50 hover:bg-gray-50">
                   <td className="py-2 pr-3 font-mono text-gray-600">{row.development_id}</td>
                   <td className="py-2 pr-3 text-gray-700 font-medium">{row.object_count}</td>
+                  <td className="py-2 pr-3 text-gray-500">{row.sample_object_type || "—"}</td>
                   <td className="py-2 pr-3 text-gray-600">{row.developer_name || "—"}</td>
                   <td className="py-2 pr-3 text-gray-500 max-w-xs truncate" title={row.sample_address}>
                     {row.sample_address || "—"}
@@ -829,7 +862,9 @@ function UnresolvedIdsPanel() {
                         disabled={saving[row.development_id] || !edits[row.development_id]?.trim()}
                         className="px-2 py-1 rounded text-xs bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-40"
                       >
-                        {saved[row.development_id] ? "✓" : saving[row.development_id] ? "..." : "Сохранить"}
+                        {saved[row.development_id]
+                          ? `✓ обновлено ${patchInfo[row.development_id] ?? ""}`
+                          : saving[row.development_id] ? "..." : "Сохранить"}
                       </button>
                       {saveError[row.development_id] && (
                         <span className="text-red-500 text-xs">{saveError[row.development_id]}</span>
