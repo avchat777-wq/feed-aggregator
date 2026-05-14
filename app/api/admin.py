@@ -372,3 +372,49 @@ async def delete_jk_coordinate(
         await session.delete(row)
         await session.commit()
     return
+
+
+@router.get("/jk-coordinates/missing")
+async def list_jk_missing_coordinates(_=Depends(get_current_user)):
+    """Return JK names that have active objects but no coordinates in DB.
+
+    Queries objects table for distinct jk_name values where latitude IS NULL,
+    then excludes names already present in jk_coordinates table.
+    Returns list sorted by object count descending.
+    """
+    async with async_session() as session:
+        # JK names that already have coordinates
+        coord_result = await session.execute(select(JkCoordinate.jk_name))
+        covered = {row[0].lower() for row in coord_result.all()}
+
+        # Active objects with no coordinates, grouped by jk_name
+        stmt = (
+            select(
+                Object.jk_name,
+                func.count(Object.id).label("object_count"),
+                func.min(Object.address).label("sample_address"),
+            )
+            .where(
+                and_(
+                    Object.status == "active",
+                    Object.jk_name.isnot(None),
+                    Object.jk_name != "",
+                    Object.latitude.is_(None),
+                )
+            )
+            .group_by(Object.jk_name)
+            .order_by(func.count(Object.id).desc())
+        )
+        result = await session.execute(stmt)
+        rows = result.all()
+
+        return [
+            {
+                "jk_name": row.jk_name,
+                "object_count": row.object_count,
+                "sample_address": row.sample_address,
+                "already_covered": row.jk_name.lower() in covered,
+            }
+            for row in rows
+            if row.jk_name.lower() not in covered
+        ]
