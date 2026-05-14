@@ -114,7 +114,9 @@ class FeedGenerator:
         if obj.floors_total:
             etree.SubElement(obj_el, "FloorsCount").text = str(obj.floors_total)
 
-        etree.SubElement(obj_el, "FlatNumber").text = str(obj.flat_number)
+        # P6: FlatNumber only for apartments/apartments-type objects, not parking/storage
+        if obj_type in ("квартира", "апартаменты") and obj.flat_number:
+            etree.SubElement(obj_el, "FlatNumber").text = str(obj.flat_number)
 
         if obj.house_name:
             etree.SubElement(obj_el, "Building").text = obj.house_name

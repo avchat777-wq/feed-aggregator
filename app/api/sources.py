@@ -200,12 +200,33 @@ async def test_source(
         for obj in raw_objects[:10]
     ]
 
+    # P8: Warn if key fields are more than 30% empty
+    EMPTY_THRESHOLD = 0.30
+    KEY_FIELDS = ("jk_name", "flat_number", "floor", "total_area", "price")
+    field_warnings: list[dict] = []
+    total = len(raw_objects)
+    if total > 0:
+        for fname in KEY_FIELDS:
+            empty_count = sum(
+                1 for o in raw_objects
+                if not getattr(o, fname, None) or str(getattr(o, fname, "")).strip() in ("", "0")
+            )
+            ratio = empty_count / total
+            if ratio >= EMPTY_THRESHOLD:
+                field_warnings.append({
+                    "field": fname,
+                    "empty_count": empty_count,
+                    "total": total,
+                    "percent": round(ratio * 100),
+                })
+
     return {
         "success": True,
         "total_parsed": len(raw_objects),
         "jk_names_found": jk_names,
         "errors": parser.errors[:10],
         "preview": preview,
+        "field_warnings": field_warnings,
     }
 
 

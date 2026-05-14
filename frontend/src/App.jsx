@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react'
 import { BrowserRouter, Routes, Route, Navigate, Link, useLocation } from 'react-router-dom'
 import {
   LayoutDashboard, Database, Settings, FileText,
-  Bell, Download, Users, LogOut, Menu, X
+  Bell, Download, Users, LogOut, Menu, X, MapPin
 } from 'lucide-react'
 import api from './api'
 import Dashboard from './pages/Dashboard'
@@ -12,6 +12,7 @@ import Logs from './pages/Logs'
 import Mappings from './pages/Mappings'
 import Feed from './pages/Feed'
 import Alerts from './pages/Alerts'
+import JkManagement from './pages/JkManagement'
 import Login from './pages/Login'
 
 function Sidebar({ open, setOpen }) {
@@ -23,6 +24,7 @@ function Sidebar({ open, setOpen }) {
     { to: '/objects', icon: FileText, label: 'Объекты' },
     { to: '/logs', icon: FileText, label: 'Логи' },
     { to: '/alerts', icon: Bell, label: 'Уведомления' },
+    { to: '/jk', icon: MapPin, label: 'Управление ЖК' },
     { to: '/feed', icon: Download, label: 'Выходной фид' },
   ]
 
@@ -91,6 +93,7 @@ function Layout() {
             <Route path="/mappings" element={<Mappings />} />
             <Route path="/feed" element={<Feed />} />
             <Route path="/alerts" element={<Alerts />} />
+            <Route path="/jk" element={<JkManagement />} />
           </Routes>
         </div>
       </main>

@@ -8,9 +8,21 @@ rooms, floor, building-name, description, image.
 
 import logging
 from lxml import etree
-from app.parsers.base import BaseParser, RawObject
+from app.parsers.base import BaseParser, RawObject, split_jk_and_corpus
 
 logger = logging.getLogger(__name__)
+
+# P1 — Map Yandex <category> values to internal object_type
+YANDEX_CATEGORY_MAP: dict[str, str] = {
+    "apartment":   "квартира",
+    "rooms":       "квартира",
+    "room":        "квартира",
+    "garage":      "машиноместо",   # garage = машиноместо в YRL
+    "parking":     "машиноместо",
+    "commercial":  "коммерческая",  # будет отфильтрован в normalizer
+    "lot":         "участок",       # будет отфильтрован
+    "house":       "дом",           # будет отфильтрован
+}
 
 
 class YandexParser(BaseParser):
@@ -71,7 +83,21 @@ class YandexParser(BaseParser):
 
         obj = RawObject()
         obj.source_object_id = offer.get("internal-id", "") or offer.get("id", "")
-        obj.jk_name = text("building-name") or text("yandex-building-name")
+
+        # P1 — object_type from <category> attribute or tag
+        raw_category = (
+            offer.get("category") or offer.get("type") or
+            text("category") or text("type") or ""
+        ).lower().strip()
+        obj.object_type = YANDEX_CATEGORY_MAP.get(raw_category, "квартира")
+
+        # P5a — split building-name into jk_name + house_name
+        building_name_raw = text("building-name") or text("yandex-building-name")
+        jk_part, corpus_part = split_jk_and_corpus(building_name_raw)
+        obj.jk_name = jk_part
+        if corpus_part:
+            obj.house_name = corpus_part
+
         obj.floor = text("floor")
         obj.floors_total = text("floors-total") or text("floors-offered") or None
         obj.rooms = text("rooms") or text("rooms-offered")
@@ -90,12 +116,12 @@ class YandexParser(BaseParser):
             obj.latitude = text("latitude", location) or None
             obj.longitude = text("longitude", location) or None
 
-        # Apartment number: try direct child first, then inside <location> (Широта/domoplaner format)
+        # P6 — Apartment number: try real tags, NO fallback to source_object_id
+        # (avoids mусорных ID like "389D217284" in FlatNumber)
         obj.flat_number = (
             text("apartment") or text("flat-number") or
-            (text("apartment", location) if location is not None else "") or
-            obj.source_object_id
-        )
+            (text("apartment", location) if location is not None else "")
+        ) or ""
 
         # Phone
         agent = find_el("sales-agent")

@@ -5,9 +5,10 @@ from app.models.alert import Alert
 from app.models.mapping import Mapping
 from app.models.user import User
 from app.models.jk_synonym import JkSynonym
+from app.models.jk_coordinate import JkCoordinate
 
 __all__ = [
     "Source", "Object", "ObjectHistory",
     "SyncLog", "Alert", "Mapping", "User",
-    "JkSynonym",
+    "JkSynonym", "JkCoordinate",
 ]

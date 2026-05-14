@@ -12,10 +12,16 @@ Key differences from other formats:
 """
 
 import logging
+import re
 from lxml import etree
 from app.parsers.base import BaseParser, RawObject
 from app.services.avito_lookup import avito_lookup
 from app.services.dev_id_mapping import dev_id_mapping
+
+# P5c — regex to extract corpus designator from an address string
+_CORPUS_FROM_ADDR_RE = re.compile(
+    r"(?i)корпус\s*([\w\d/.\-]+)"
+)
 
 logger = logging.getLogger(__name__)
 
@@ -152,10 +158,8 @@ class AvitoParser(BaseParser):
         else:
             obj.jk_name = _mapping_jk
 
-        obj.flat_number = (
-            t("ApartmentNumber") or t("FlatNumber") or
-            t("Flat") or obj.source_object_id
-        )
+        # P6: no fallback to source_object_id — avoids garbage Ad IDs in FlatNumber
+        obj.flat_number = t("ApartmentNumber") or t("FlatNumber") or t("Flat") or ""
         obj.floor = t("Floor") or t("FloorNumber") or "0"
         obj.floors_total = t("Floors") or t("FloorsCount") or None
         obj.rooms = t("Rooms") or t("RoomsCount") or "0"
@@ -178,6 +182,14 @@ class AvitoParser(BaseParser):
         obj.sale_type = t("DealType") or t("SaleType") or None
         if not obj.house_name:
             obj.house_name = t("HouseName") or t("Building") or t("Corpus") or None
+
+        # P5c: if house_name still empty, try to extract corpus from address string
+        # e.g. "Россия, Алтайский край, Барнаул, пр-кт Строителей, 18, корпус 1" → "корпус 1"
+        if not obj.house_name and obj.address:
+            m = _CORPUS_FROM_ADDR_RE.search(obj.address)
+            if m:
+                obj.house_name = f"корпус {m.group(1)}"
+
         obj.section_number = t("Section") or t("SectionNumber") or None
         obj.description = t("Description") or None
         obj.phone = (

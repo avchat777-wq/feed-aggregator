@@ -371,6 +371,21 @@ function TestResultModal({ result, onClose }) {
           </div>
         )}
 
+        {result.field_warnings?.length > 0 && (
+          <div className="mb-4 bg-yellow-50 border border-yellow-200 rounded-lg p-3">
+            <p className="text-sm font-semibold text-yellow-800 mb-2">
+              ⚠️ Внимание: более 30% объектов имеют пустые ключевые поля
+            </p>
+            <ul className="text-xs text-yellow-700 space-y-1">
+              {result.field_warnings.map((w, i) => (
+                <li key={i}>
+                  • <strong>{w.field}</strong>: {w.empty_count} из {w.total} пусто ({w.percent}%)
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+
         {result.errors?.length > 0 && (
           <div className="mb-4">
             <p className="text-sm font-semibold text-red-700 mb-1">

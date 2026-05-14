@@ -100,6 +100,7 @@ def normalize_object(
     source_id: int,
     phone_override: Optional[str] = None,
     jk_synonyms: Optional[dict[str, str]] = None,
+    jk_coordinates: Optional[dict[str, tuple]] = None,
 ) -> UnifiedObject:
     """Convert a RawObject into a fully normalized UnifiedObject.
 
@@ -110,6 +111,9 @@ def normalize_object(
         jk_synonyms: Optional {raw_name_lower: canonical_name} dict for JK
                      name normalisation.  Built by the scheduler from the
                      jk_synonyms DB table.
+        jk_coordinates: Optional {jk_name_lower: (lat, lon)} dict for
+                        filling in missing coordinates. Built by the scheduler
+                        from the jk_coordinates DB table.
     """
     u = UnifiedObject()
     u.source_id = source_id
@@ -142,6 +146,17 @@ def normalize_object(
     u.photos = [url for url in raw.photos if url.startswith("http")]
     u.latitude = _parse_decimal(raw.latitude)
     u.longitude = _parse_decimal(raw.longitude)
+
+    # P2: fill missing coordinates from JK coordinates table
+    if (u.latitude is None or u.longitude is None) and jk_coordinates and u.jk_name:
+        coord = jk_coordinates.get(u.jk_name.lower())
+        if coord:
+            lat, lon = coord
+            if u.latitude is None:
+                u.latitude = Decimal(str(lat))
+            if u.longitude is None:
+                u.longitude = Decimal(str(lon))
+
     u.object_type = (raw.object_type or "квартира").strip().lower()
     u.phone = _normalize_phone(phone_override or raw.phone)
     u.status = raw.status.strip().lower() if raw.status else "active"

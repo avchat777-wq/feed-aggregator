@@ -17,7 +17,7 @@ from __future__ import annotations
 
 import logging
 from lxml import etree
-from app.parsers.base import BaseParser, RawObject
+from app.parsers.base import BaseParser, RawObject, split_jk_and_corpus
 
 logger = logging.getLogger(__name__)
 
@@ -236,25 +236,37 @@ class DomClickParser(BaseParser):
                     complex_elem.findall(".//building") or
                     complex_elem.findall(".//Building")
                 )
+                # P7: extract complex-level address as last-resort fallback
+                complex_addr = self._get_text(complex_elem, ("address", "Address")) or ""
+
                 if buildings:
                     for building_elem in buildings:
                         building_name = self._get_building_name(building_elem)
-                        # If <complex><name> is empty, the building name IS the JK name
-                        # (macroserver.ru format: complex has no name, building carries it)
+                        # If <complex><name> is empty, the building name IS the JK name.
+                        # P5b: apply universal corpus split — works for any feed without
+                        # per-developer hardcoding.
                         if jk_name:
                             effective_jk = jk_name
                             house_name = building_name
                         else:
-                            effective_jk = building_name
-                            house_name = ""
+                            # Split "ЖК ДК 17 ЭТАЖЕЙ (2 Корпус вдоль Островского)"
+                            # → effective_jk="ЖК ДК 17 ЭТАЖЕЙ", house_name="2 Корпус вдоль Островского"
+                            # jk_synonyms in normalizer will then canonise "ЖК ДК 17 ЭТАЖЕЙ" → "ЖК Дом Культуры"
+                            effective_jk, house_name = split_jk_and_corpus(building_name)
+                            if not house_name:
+                                # No corpus pattern found — full building_name is the JK
+                                effective_jk = building_name
+
                         # Pick up floors_total and address from <building> level
                         # since they're not repeated inside each <flat>
                         building_floors = self._get_text(building_elem, (
                             "floors", "Floors", "floors_count", "FloorsCount",
                         ))
-                        building_address = self._get_text(building_elem, (
-                            "address", "Address",
-                        ))
+                        # P7: building address → fallback to complex address
+                        building_address = (
+                            self._get_text(building_elem, ("address", "Address")) or
+                            complex_addr
+                        )
                         # Building-level coords override complex-level if present
                         bld_lat = self._get_text(building_elem, ("latitude", "Latitude")) or complex_lat
                         bld_lon = self._get_text(building_elem, ("longitude", "Longitude")) or complex_lon
@@ -468,15 +480,24 @@ class DomClickParser(BaseParser):
 
     # ── Field extraction helpers ────────────────────────────────────────────
 
+    # P4 — values treated as missing (null placeholders from various feeds)
+    _NULL_VALUES = frozenset({"null", "none", "-", "н/д", "nd", "n/a", ""})
+
     def _get_field(self, elem, field_key: str) -> str:
-        """Try all candidate tag names for the field, return first found."""
+        """Try all candidate tag names for the field, return first found.
+
+        P4: Explicitly filters null-placeholder strings ('null', 'none', '-', etc.)
+        so they are treated as missing values, not real data.
+        """
         for tag in FIELD_CANDIDATES.get(field_key, []):
             el = elem.find(tag)
             if el is not None and el.text:
-                return el.text.strip()
+                val = el.text.strip()
+                if val.lower() not in self._NULL_VALUES:
+                    return val
             # Also check as attribute
-            val = elem.get(tag)
-            if val:
+            val = elem.get(tag, "")
+            if val and val.lower() not in self._NULL_VALUES:
                 return val.strip()
         return ""
 

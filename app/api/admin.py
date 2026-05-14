@@ -14,6 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.auth import get_current_user
 from app.database import async_session
 from app.models.development_mapping import DevelopmentIdMapping
+from app.models.jk_coordinate import JkCoordinate
 from app.models.object import Object
 from app.services.avito_lookup import avito_lookup, AVITO_DEV_URL
 from app.services.dev_id_mapping import dev_id_mapping
@@ -149,19 +150,25 @@ async def save_dev_id_mapping(
                 notes=payload.notes,
             ))
 
-        # Immediately patch existing objects that have this dev_id but no jk_name
-        upd = (
-            update(Object)
-            .where(
-                and_(
-                    Object.jk_id_cian == dev_id,
-                    (Object.jk_name == "") | Object.jk_name.is_(None),
+        # Immediately patch existing objects that have this dev_id but no jk_name.
+        # jk_id_cian is Integer in the DB, so cast dev_id to int before comparing.
+        patched_count = 0
+        try:
+            dev_id_int = int(dev_id)
+            upd = (
+                update(Object)
+                .where(
+                    and_(
+                        Object.jk_id_cian == dev_id_int,
+                        (Object.jk_name == "") | Object.jk_name.is_(None),
+                    )
                 )
+                .values(jk_name=jk)
             )
-            .values(jk_name=jk)
-        )
-        upd_result = await session.execute(upd)
-        patched_count = upd_result.rowcount
+            upd_result = await session.execute(upd)
+            patched_count = upd_result.rowcount
+        except (ValueError, TypeError):
+            pass  # non-numeric dev_id — no objects to patch
 
         await session.commit()
 
@@ -194,11 +201,15 @@ async def reapply_all_dev_id_mappings(_=Depends(get_current_user)):
         total_patched = 0
         details = []
         for m in mappings:
+            try:
+                dev_id_int = int(m.development_id)
+            except (ValueError, TypeError):
+                continue  # skip non-numeric IDs
             upd = (
                 update(Object)
                 .where(
                     and_(
-                        Object.jk_id_cian == m.development_id,
+                        Object.jk_id_cian == dev_id_int,
                         (Object.jk_name == "") | Object.jk_name.is_(None),
                     )
                 )
@@ -284,3 +295,80 @@ async def get_unresolved_ids(_=Depends(get_current_user)):
             }
             for row in rows
         ]
+
+
+# ── JK Coordinates ────────────────────────────────────────────────────────────
+
+class JkCoordinateIn(BaseModel):
+    jk_name: str
+    latitude: float
+    longitude: float
+
+
+@router.get("/jk-coordinates")
+async def list_jk_coordinates(_=Depends(get_current_user)):
+    """List all JK coordinates overrides."""
+    async with async_session() as session:
+        result = await session.execute(
+            select(JkCoordinate).order_by(JkCoordinate.jk_name)
+        )
+        rows = result.scalars().all()
+        return [
+            {
+                "id": r.id,
+                "jk_name": r.jk_name,
+                "latitude": r.latitude,
+                "longitude": r.longitude,
+                "created_at": r.created_at,
+                "updated_at": r.updated_at,
+            }
+            for r in rows
+        ]
+
+
+@router.post("/jk-coordinates", status_code=201)
+async def save_jk_coordinate(
+    payload: JkCoordinateIn,
+    _=Depends(get_current_user),
+):
+    """Create or update a JK coordinates record."""
+    jk = payload.jk_name.strip()
+    if not jk:
+        raise HTTPException(status_code=400, detail="jk_name обязателен")
+
+    async with async_session() as session:
+        result = await session.execute(
+            select(JkCoordinate).where(JkCoordinate.jk_name == jk)
+        )
+        existing = result.scalar_one_or_none()
+        if existing:
+            existing.latitude = payload.latitude
+            existing.longitude = payload.longitude
+        else:
+            session.add(JkCoordinate(
+                jk_name=jk,
+                latitude=payload.latitude,
+                longitude=payload.longitude,
+            ))
+        await session.commit()
+
+    logger.info(f"JkCoordinate saved: {jk!r} → ({payload.latitude}, {payload.longitude})")
+    return {"success": True, "jk_name": jk, "latitude": payload.latitude, "longitude": payload.longitude}
+
+
+@router.delete("/jk-coordinates/{coord_id}", status_code=204)
+async def delete_jk_coordinate(
+    coord_id: int,
+    _=Depends(get_current_user),
+):
+    """Delete a JK coordinate record."""
+    async with async_session() as session:
+        result = await session.execute(
+            select(JkCoordinate).where(JkCoordinate.id == coord_id)
+        )
+        row = result.scalar_one_or_none()
+        if not row:
+            raise HTTPException(status_code=404, detail="Запись не найдена")
+        await session.delete(row)
+        await session.commit()
+    return

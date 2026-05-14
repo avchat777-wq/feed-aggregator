@@ -3,11 +3,56 @@
 from __future__ import annotations
 
 import logging
+import re
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from typing import Optional
 
 logger = logging.getLogger(__name__)
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Universal corpus/building split utility
+# ──────────────────────────────────────────────────────────────────────────────
+
+# Keywords that indicate a building/corpus suffix inside a JK name string
+_CORPUS_RE = re.compile(
+    r"""
+    ^(.+?)                              # JK name (non-greedy)
+    (?:
+        \s*\(                           # opening paren
+            ([^)]*                      # content
+            (?:корпус|корп|литер|лит|блок|секция|дом\s+\d)
+            [^)]*)                      # rest of parens content
+        \)                              # closing paren
+    |
+        [,\s]+                          # delimiter
+        ((?:корпус|корп\.?|литер|лит\.?|блок|секция)
+        [\s\w./\-]+)                    # corpus label + designator
+    )$
+    """,
+    re.IGNORECASE | re.VERBOSE,
+)
+
+
+def split_jk_and_corpus(name: str) -> tuple[str, str]:
+    """Split a building name that embeds corpus info into (jk_name, house_name).
+
+    Examples:
+        "ЖК ДК 17 ЭТАЖЕЙ (2 Корпус вдоль Островского)" → ("ЖК ДК 17 ЭТАЖЕЙ", "2 Корпус вдоль Островского")
+        "ЖК Шервуд Шотландия, корпус 4"                → ("ЖК Шервуд Шотландия", "корпус 4")
+        "Жилой комплекс Дом, лит. А"                   → ("Жилой комплекс Дом", "лит. А")
+        "Просто название без корпуса"                   → ("Просто название без корпуса", "")
+
+    Universal — no per-developer logic. Works for any new feed out of the box.
+    """
+    if not name:
+        return name, ""
+    m = _CORPUS_RE.match(name.strip())
+    if not m:
+        return name.strip(), ""
+    jk_part = m.group(1).strip().rstrip(",")
+    corpus_part = (m.group(2) or m.group(3) or "").strip()
+    return jk_part, corpus_part
 
 
 @dataclass

@@ -37,6 +37,7 @@ from app.database import async_session
 from app.models.source import Source
 from app.models.sync_log import SyncLog
 from app.models.jk_synonym import JkSynonym
+from app.models.jk_coordinate import JkCoordinate
 from app.models.mapping import Mapping
 from app.parsers import get_parser
 from app.normalizer import normalize_object
@@ -218,6 +219,9 @@ class SyncOrchestrator:
         # JK synonym dict loaded at start of each sync cycle
         # Format: {raw_name_lower: canonical_name}
         self._jk_synonyms: dict[str, str] = {}
+        # JK coordinates dict loaded at start of each sync cycle
+        # Format: {jk_name_lower: (latitude, longitude)}
+        self._jk_coordinates: dict[str, tuple] = {}
 
     async def run_full_sync(self):
         """Execute complete sync cycle for all active sources."""
@@ -228,8 +232,9 @@ class SyncOrchestrator:
         async with async_session() as session:
             notifier = TelegramNotifier(session)
 
-            # Load JK synonyms from DB once per cycle
+            # Load JK synonyms and coordinates from DB once per cycle
             await self._load_jk_synonyms(session)
+            await self._load_jk_coordinates(session)
 
             # Create global sync log
             global_log = SyncLog(status="running")
@@ -300,6 +305,13 @@ class SyncOrchestrator:
         synonyms = result.scalars().all()
         self._jk_synonyms = {s.raw_name.lower(): s.normalized_name for s in synonyms}
         logger.info(f"Loaded {len(self._jk_synonyms)} JK synonyms")
+
+    async def _load_jk_coordinates(self, session) -> None:
+        """Load all JK coordinates from DB into in-memory dict."""
+        result = await session.execute(select(JkCoordinate))
+        coords = result.scalars().all()
+        self._jk_coordinates = {c.jk_name.lower(): (c.latitude, c.longitude) for c in coords}
+        logger.info(f"Loaded {len(self._jk_coordinates)} JK coordinates")
 
     async def _sync_source(
         self, session, source: Source, notifier: TelegramNotifier
@@ -428,6 +440,7 @@ class SyncOrchestrator:
                     raw, source.id,
                     phone_override=source.phone_override,
                     jk_synonyms=self._jk_synonyms,
+                    jk_coordinates=self._jk_coordinates,
                 )
                 result = await engine.identify_and_upsert(unified)
 
