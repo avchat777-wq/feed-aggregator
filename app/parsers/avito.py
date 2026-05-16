@@ -166,7 +166,15 @@ class AvitoParser(BaseParser):
         obj.total_area = t("Square") or t("TotalArea") or t("Area") or "0"
         obj.living_area = t("LivingSquare") or t("LivingArea") or None
         obj.kitchen_area = t("KitchenSquare") or t("KitchenArea") or None
-        obj.price = t("Price") or t("Cost") or "0"
+        # Price can be a direct child of <Ad> OR nested inside <BargainTerms>
+        bargain = ad.find("BargainTerms")
+        obj.price = (
+            t("Price") or
+            t("Cost") or
+            (self._text(bargain, "Price") if bargain is not None else "") or
+            (self._text(bargain, "Cost") if bargain is not None else "") or
+            "0"
+        )
 
         # Address: feed value takes priority over lookup
         if not obj.address:

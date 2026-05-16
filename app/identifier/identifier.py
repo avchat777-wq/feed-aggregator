@@ -99,12 +99,16 @@ class IdentificationEngine:
     async def _find_exact_match(self, u: UnifiedObject) -> Optional[Object]:
         """Step 1: exact composite key match.
 
-        Fallback: if the feed now provides a jk_name but existing objects for
-        this source have an empty jk_name (created before parser was fixed),
-        match by source_id + flat_number + object_type so they are updated
-        in-place rather than duplicated.
+        Priority:
+        1. Active/booked/sold match (status != "removed") — normal update path.
+        2. Previously removed object with same key — restore it to active so
+           we don't accumulate duplicate ExternalIds every time an object
+           temporarily disappears (feed outage) and comes back.
+        3. Migration fallback: objects with empty jk_name from before parser fix.
         """
         obj_type = getattr(u, "object_type", "квартира") or "квартира"
+
+        # --- Primary: find any non-removed match ---
         stmt = select(Object).where(
             and_(
                 Object.source_id == u.source_id,
@@ -120,9 +124,32 @@ class IdentificationEngine:
         if match:
             return match
 
-        # Migration fallback: if parser was previously broken (jk_name was empty),
-        # existing objects have empty jk_name. Match by source + flat + type
-        # to update them in-place instead of creating duplicates.
+        # --- Restore removed: same composite key, but was marked removed ---
+        # (happens when object temporarily disappeared from source for 3+ syncs)
+        stmt_removed = select(Object).where(
+            and_(
+                Object.source_id == u.source_id,
+                Object.jk_name == u.jk_name,
+                Object.house_name == (u.house_name or ""),
+                Object.flat_number == u.flat_number,
+                Object.object_type == obj_type,
+                Object.status == "removed",
+            )
+        ).order_by(Object.id.desc()).limit(1)
+        result_removed = await self.session.execute(stmt_removed)
+        removed_match = result_removed.scalar_one_or_none()
+        if removed_match:
+            # Restore: clear removed_at and reset missing_count
+            removed_match.status = "active"
+            removed_match.removed_at = None
+            removed_match.missing_count = 0
+            logger.info(
+                f"Restored removed object: {removed_match.external_id} "
+                f"({removed_match.jk_name}, кв. {removed_match.flat_number})"
+            )
+            return removed_match
+
+        # --- Migration fallback: objects with empty jk_name (pre-parser-fix) ---
         if u.jk_name:
             stmt2 = select(Object).where(
                 and_(

@@ -29,14 +29,16 @@ class FeedGenerator:
         self.output_dir.mkdir(parents=True, exist_ok=True)
 
     async def generate(self) -> str:
-        stmt = select(Object).where(Object.status == "active").order_by(Object.external_id)
+        # Include all objects except "removed" — booked/sold must also go to Intrum
+        # so the CRM has the full picture of developer inventory.
+        stmt = select(Object).where(Object.status != "removed").order_by(Object.external_id)
         result = await self.session.execute(stmt)
         objects = list(result.scalars().all())
 
-        logger.info(f"Generating feed with {len(objects)} active objects")
+        logger.info(f"Generating feed with {len(objects)} objects (active/booked/sold)")
 
         if not objects:
-            logger.warning("No active objects to include in feed")
+            logger.warning("No objects to include in feed")
 
         xml_bytes = self._build_xml(objects)
         size_mb = len(xml_bytes) / (1024 * 1024)
