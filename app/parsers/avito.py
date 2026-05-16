@@ -158,8 +158,16 @@ class AvitoParser(BaseParser):
         else:
             obj.jk_name = _mapping_jk
 
-        # P6: no fallback to source_object_id — avoids garbage Ad IDs in FlatNumber
-        obj.flat_number = t("ApartmentNumber") or t("FlatNumber") or t("Flat") or ""
+        # Flat number: explicit tag first; if absent, fall back to source Ad Id.
+        # P6 rationale: for apartments we prefer an explicit flat number, but
+        # for machine places / storage units that have no flat number tag the
+        # Ad Id is the only stable unique identifier — without it all parking
+        # spots in the same JK collapse onto a single composite key and only
+        # one object ever reaches the feed.
+        obj.flat_number = (
+            t("ApartmentNumber") or t("FlatNumber") or t("Flat") or
+            obj.source_object_id  # fallback: Avito Ad Id keeps each ad unique
+        )
         obj.floor = t("Floor") or t("FloorNumber") or "0"
         obj.floors_total = t("Floors") or t("FloorsCount") or None
         obj.rooms = t("Rooms") or t("RoomsCount") or "0"
