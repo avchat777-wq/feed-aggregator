@@ -122,6 +122,11 @@ def normalize_object(
 
     # Apply JK synonym normalization
     raw_jk = raw.jk_name.strip()
+    # Strip Russian guillemet quotes «» so that "ЖК «Барнаул»" and "ЖК Барнаул"
+    # are treated as the same JK — avito_lookup often returns names with quotes
+    # while the feed tag provides the same name without them.
+    # Also normalise underscore → dash ("Легенда_155" == "Легенда-155").
+    raw_jk = raw_jk.replace("«", "").replace("»", "").replace("_", "-").strip()
     if jk_synonyms and raw_jk:
         u.jk_name = jk_synonyms.get(raw_jk.lower(), raw_jk)
     else:
