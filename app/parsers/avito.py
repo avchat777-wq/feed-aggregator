@@ -101,6 +101,17 @@ class AvitoParser(BaseParser):
                 f"[{self.source_name}] Skipped {skipped_category} non-apartment ads"
             )
 
+        # Log objects with missing JK name — they go into the feed but should be
+        # fixed via mapping_config.jk_name or dev_id_mapping in the source settings.
+        no_jk = [o for o in results if not o.jk_name]
+        if no_jk:
+            logger.warning(
+                f"[{self.source_name}] {len(no_jk)} objects have empty jk_name "
+                f"(NewDevelopmentId not resolved). "
+                f"Fix via source mapping_config.jk_name or dev_id_mapping table. "
+                f"Ids: {[o.source_object_id for o in no_jk[:10]]}"
+            )
+
         logger.info(f"[{self.source_name}] Avito parser: {len(results)} objects parsed")
         return results
 
