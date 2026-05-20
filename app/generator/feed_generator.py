@@ -78,20 +78,22 @@ class FeedGenerator:
         etree.SubElement(obj_el, "ObjectType").text = getattr(obj, "object_type", "квартира") or "квартира"
         etree.SubElement(obj_el, "DeveloperName").text = obj.developer_name
 
+        obj_type = getattr(obj, "object_type", "квартира") or "квартира"
+
         jk = etree.SubElement(obj_el, "JKSchema")
         if obj.jk_id_cian:
             etree.SubElement(jk, "Id").text = str(obj.jk_id_cian)
         etree.SubElement(jk, "n").text = obj.jk_name
 
-        if obj.house_name:
+        if obj_type in ("квартира", "апартаменты") and obj.flat_number:
             house = etree.SubElement(jk, "House")
-            etree.SubElement(house, "n").text = obj.house_name
+            if obj.house_name:
+                etree.SubElement(house, "n").text = obj.house_name
             flat = etree.SubElement(house, "Flat")
             etree.SubElement(flat, "FlatNumber").text = str(obj.flat_number)
             if obj.section_number:
                 etree.SubElement(flat, "SectionNumber").text = str(obj.section_number)
 
-        obj_type = getattr(obj, "object_type", "квартира") or "квартира"
         if obj_type == "машиноместо":
             name = f"Машиноместо, {obj.total_area} м², {obj.jk_name}"
         elif obj_type == "кладовка":
