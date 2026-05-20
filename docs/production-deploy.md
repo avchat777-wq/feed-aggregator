@@ -2,20 +2,20 @@
 
 Server: `157.22.205.205`
 Project path: `/opt/feed-aggregator`
-Domain: `feed.mielbarnaul.ru`
+Domain: `feed.ml22.ru`
 
 ## DNS
 
 Create an `A` record:
 
 ```text
-feed.mielbarnaul.ru -> 157.22.205.205
+feed.ml22.ru -> 157.22.205.205
 ```
 
 Wait until it resolves from the server:
 
 ```bash
-dig +short feed.mielbarnaul.ru
+dig +short feed.ml22.ru
 ```
 
 ## Environment
@@ -25,7 +25,7 @@ Use `.env.example` as a template and keep real secrets only in `/opt/feed-aggreg
 Important production values:
 
 ```dotenv
-FEED_BASE_URL=https://feed.mielbarnaul.ru/feed
+FEED_BASE_URL=https://feed.ml22.ru/feed
 SYNC_INTERVAL_HOURS=24
 ```
 
@@ -65,7 +65,7 @@ Host nginx site:
 ```nginx
 server {
     listen 80;
-    server_name feed.mielbarnaul.ru;
+    server_name feed.ml22.ru;
 
     location / {
         proxy_pass http://127.0.0.1:8080;
@@ -80,15 +80,15 @@ server {
 Then issue the certificate:
 
 ```bash
-certbot --nginx -d feed.mielbarnaul.ru
+certbot --nginx -d feed.ml22.ru
 ```
 
 After HTTPS is active, check:
 
 ```bash
-curl -I https://feed.mielbarnaul.ru/
-curl -I https://feed.mielbarnaul.ru/sources
-curl -I https://feed.mielbarnaul.ru/feed/feed.xml
+curl -I https://feed.ml22.ru/
+curl -I https://feed.ml22.ru/sources
+curl -I https://feed.ml22.ru/feed/feed.xml
 ```
 
 ## Daily PostgreSQL backup
