@@ -1,3 +1,11 @@
+FROM node:20-alpine AS frontend-build
+
+WORKDIR /frontend
+COPY frontend/package*.json ./
+RUN npm install
+COPY frontend/ ./
+RUN npm run build
+
 FROM python:3.11-slim
 
 WORKDIR /app
@@ -12,7 +20,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY alembic.ini .
 COPY alembic/ alembic/
 COPY app/ app/
-COPY static/ static/
+COPY --from=frontend-build /static/ static/
 
 EXPOSE 8000
 

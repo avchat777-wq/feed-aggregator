@@ -3,6 +3,8 @@
 import logging
 from contextlib import asynccontextmanager
 
+from pathlib import Path
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
@@ -79,22 +81,18 @@ app.include_router(feed.router)
 app.include_router(notifications.router)
 app.include_router(admin.router)
 
-# Serve static feed files
+# Serve static feed files and the React admin panel
 try:
     app.mount("/static", StaticFiles(directory="static"), name="static")
 except Exception:
     pass  # Directory may not exist yet
 
 
-@app.get("/")
-async def root():
-    return {
-        "name": "Feed Aggregator",
-        "version": "1.0.0",
-        "feed_url": f"{settings.feed_base_url}/feed.xml",
-    }
-
-
 @app.get("/health")
 async def health():
     return {"status": "ok"}
+
+
+admin_static_dir = Path("static/admin")
+if admin_static_dir.exists():
+    app.mount("/", StaticFiles(directory=admin_static_dir, html=True), name="admin")
