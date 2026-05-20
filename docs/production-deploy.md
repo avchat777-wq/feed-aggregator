@@ -26,7 +26,7 @@ Important production values:
 
 ```dotenv
 FEED_BASE_URL=https://feed.ml22.ru/feed
-SYNC_INTERVAL_HOURS=24
+SYNC_INTERVAL_HOURS=12
 ```
 
 Keep PostgreSQL and the backend private. In production use `docker-compose.prod.yml`, where only nginx is published.
