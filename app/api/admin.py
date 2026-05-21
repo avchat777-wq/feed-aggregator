@@ -253,7 +253,8 @@ async def get_unresolved_ids(_=Depends(get_current_user)):
     """Return NewDevelopmentIds that have objects without JK name in DB.
 
     Shows: development_id, object count, sample address, developer name.
-    Excludes IDs that are already in dev_id_mappings table.
+    Includes already mapped IDs if active objects still have an empty JK name,
+    so stale duplicates remain visible until mappings are reapplied.
     """
     async with async_session() as session:
         # Objects with empty jk_name but with jk_id_cian (= NewDevelopmentId)
