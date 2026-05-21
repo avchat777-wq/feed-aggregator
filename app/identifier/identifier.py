@@ -118,7 +118,7 @@ class IdentificationEngine:
                 Object.object_type == obj_type,
                 Object.status != "removed",
             )
-        )
+        ).order_by(Object.id.desc()).limit(1)
         result = await self.session.execute(stmt)
         match = result.scalar_one_or_none()
         if match:
@@ -159,7 +159,7 @@ class IdentificationEngine:
                     Object.object_type == obj_type,
                     Object.status != "removed",
                 )
-            )
+            ).order_by(Object.id.desc()).limit(1)
             result2 = await self.session.execute(stmt2)
             return result2.scalar_one_or_none()
 
