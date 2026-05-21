@@ -4,6 +4,7 @@ import pytest
 from decimal import Decimal
 from app.parsers.base import RawObject
 from app.normalizer.normalizer import (
+    jk_lookup_key,
     normalize_object,
     _normalize_area,
     _normalize_price,
@@ -189,6 +190,30 @@ class TestNormalizeSaleType:
 
 
 # ─────────────── Full normalization ───────────────
+
+class TestJkSynonyms:
+    def test_lookup_key_matches_quotes_dash_and_underscore_variants(self):
+        assert jk_lookup_key("ЖК «Легенда-155»") == jk_lookup_key("ЖК Легенда_155")
+        assert jk_lookup_key("Легенда - 155") == jk_lookup_key("ЖК Легенда-155")
+
+    def test_normalize_object_uses_tolerant_jk_synonym_key(self):
+        raw = RawObject(
+            source_object_id="LEG-001",
+            developer_name="СЕЛФ",
+            jk_name="ЖК Легенда-155",
+            flat_number="1",
+            floor="1",
+            rooms="1",
+            total_area="30",
+            price="3000000",
+            phone="73852111222",
+        )
+        synonyms = {jk_lookup_key("жк «легенда-155»"): "ЖК Легенда_155"}
+
+        u = normalize_object(raw, source_id=1, jk_synonyms=synonyms)
+
+        assert u.jk_name == "ЖК Легенда_155"
+
 
 class TestNormalizeObject:
     def test_full_normalization(self):

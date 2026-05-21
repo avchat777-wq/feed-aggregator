@@ -1,3 +1,3 @@
-from app.normalizer.normalizer import normalize_object, UnifiedObject
+from app.normalizer.normalizer import jk_lookup_key, normalize_object, UnifiedObject
 
-__all__ = ["normalize_object", "UnifiedObject"]
+__all__ = ["jk_lookup_key", "normalize_object", "UnifiedObject"]

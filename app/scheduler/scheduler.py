@@ -40,7 +40,7 @@ from app.models.jk_synonym import JkSynonym
 from app.models.jk_coordinate import JkCoordinate
 from app.models.mapping import Mapping
 from app.parsers import get_parser
-from app.normalizer import normalize_object
+from app.normalizer import jk_lookup_key, normalize_object
 from app.identifier import IdentificationEngine
 from app.generator import FeedGenerator
 from app.monitoring import TelegramNotifier
@@ -217,7 +217,7 @@ class SyncOrchestrator:
 
     def __init__(self):
         # JK synonym dict loaded at start of each sync cycle
-        # Format: {raw_name_lower: canonical_name}
+        # Format: {jk_lookup_key(raw_name): canonical_name}
         self._jk_synonyms: dict[str, str] = {}
         # JK coordinates dict loaded at start of each sync cycle
         # Format: {jk_name_lower: (latitude, longitude)}
@@ -303,7 +303,11 @@ class SyncOrchestrator:
         """Load all JK synonyms from DB into in-memory dict."""
         result = await session.execute(select(JkSynonym))
         synonyms = result.scalars().all()
-        self._jk_synonyms = {s.raw_name.lower(): s.normalized_name for s in synonyms}
+        self._jk_synonyms = {}
+        for synonym in synonyms:
+            key = jk_lookup_key(synonym.raw_name)
+            if key:
+                self._jk_synonyms[key] = synonym.normalized_name
         logger.info(f"Loaded {len(self._jk_synonyms)} JK synonyms")
 
     async def _load_jk_coordinates(self, session) -> None:

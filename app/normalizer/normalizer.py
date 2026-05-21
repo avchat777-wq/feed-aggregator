@@ -95,6 +95,23 @@ ROOMS_STUDIO_SYNONYMS = {"студия", "studio", "ст", "ст.", "свобо�
 
 # ──────────────────────────── Core normalization ────────────────────────────
 
+def jk_lookup_key(name: Optional[str]) -> str:
+    """Return a tolerant lookup key for matching raw JK names to synonyms."""
+    if not name:
+        return ""
+
+    value = name.strip().lower().replace("ё", "е")
+    value = re.sub(r"[«»\"'`]", "", value)
+    value = re.sub(r"[_‐‑‒–—−-]+", " ", value)
+    value = re.sub(r"^(жк|жилой\s+комплекс)\s+", "", value)
+    return re.sub(r"[^0-9a-zа-я]+", "", value)
+
+
+def _clean_jk_name(name: str) -> str:
+    """Clean display JK name without applying synonym replacement."""
+    return name.replace("«", "").replace("»", "").replace("_", "-").strip()
+
+
 def normalize_object(
     raw: RawObject,
     source_id: int,
@@ -108,7 +125,7 @@ def normalize_object(
         raw: Parsed raw object from any parser.
         source_id: Database ID of the source.
         phone_override: If set, replaces the phone from the feed.
-        jk_synonyms: Optional {raw_name_lower: canonical_name} dict for JK
+        jk_synonyms: Optional {jk_lookup_key(raw_name): canonical_name} dict for JK
                      name normalisation.  Built by the scheduler from the
                      jk_synonyms DB table.
         jk_coordinates: Optional {jk_name_lower: (lat, lon)} dict for
@@ -120,15 +137,11 @@ def normalize_object(
     u.source_object_id = raw.source_object_id.strip()
     u.developer_name = raw.developer_name.strip()
 
-    # Apply JK synonym normalization
-    raw_jk = raw.jk_name.strip()
-    # Strip Russian guillemet quotes «» so that "ЖК «Барнаул»" and "ЖК Барнаул"
-    # are treated as the same JK — avito_lookup often returns names with quotes
-    # while the feed tag provides the same name without them.
-    # Also normalise underscore → dash ("Легенда_155" == "Легенда-155").
-    raw_jk = raw_jk.replace("«", "").replace("»", "").replace("_", "-").strip()
+    # Apply JK synonym normalization. Use a tolerant lookup key so variants like
+    # "ЖК «Легенда-155»", "Легенда - 155" and "ЖК Легенда_155" match.
+    raw_jk = _clean_jk_name(raw.jk_name.strip())
     if jk_synonyms and raw_jk:
-        u.jk_name = jk_synonyms.get(raw_jk.lower(), raw_jk)
+        u.jk_name = jk_synonyms.get(jk_lookup_key(raw_jk), raw_jk)
     else:
         u.jk_name = raw_jk
     u.jk_id_cian = _parse_int(raw.jk_id_cian) or None  # store NULL, not 0, when absent
