@@ -618,7 +618,13 @@ def start_scheduler():
         id="full_sync",
         name="Full feed synchronization",
         replace_existing=True,
-        next_run_time=None,
+        coalesce=True,
+        max_instances=1,
     )
     scheduler.start()
-    logger.info(f"Scheduler started: sync every {settings.sync_interval_hours} hours")
+    job = scheduler.get_job("full_sync")
+    next_run = job.next_run_time.isoformat() if job and job.next_run_time else "unknown"
+    logger.info(
+        f"Scheduler started: sync every {settings.sync_interval_hours} hours; "
+        f"next run at {next_run}"
+    )
