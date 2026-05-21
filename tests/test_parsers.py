@@ -97,6 +97,23 @@ class TestAvitoParser:
         result = parser.parse(b"<Ads></Ads>")
         assert len(result) == 0
 
+    def test_extracts_jk_name_from_description_when_missing(self):
+        sample = b"""<?xml version="1.0" encoding="UTF-8"?>
+        <Ads>
+            <Ad>
+                <Id>AV-PARKING-1</Id>
+                <Category>Гаражи и машиноместа</Category>
+                <Square>16.3</Square>
+                <Price>1000000</Price>
+                <Description><![CDATA[<p>Знакомьтесь, ЖК &laquo;Титул&raquo;! Комфортный комплекс.</p>]]></Description>
+            </Ad>
+        </Ads>"""
+        parser = AvitoParser(SOURCE_CONFIG)
+        result = parser.parse(sample)
+
+        assert len(result) == 1
+        assert result[0].jk_name == "ЖК Титул"
+
 
 # ─────────────── CIAN Parser ───────────────
 

@@ -13,6 +13,7 @@ Key differences from other formats:
 
 import logging
 import re
+from html import unescape
 from lxml import etree
 from app.parsers.base import BaseParser, RawObject
 from app.services.avito_lookup import avito_lookup
@@ -21,6 +22,9 @@ from app.services.dev_id_mapping import dev_id_mapping
 # P5c — regex to extract corpus designator from an address string
 _CORPUS_FROM_ADDR_RE = re.compile(
     r"(?i)корпус\s*([\w\d/.\-]+)"
+)
+_JK_FROM_DESCRIPTION_RE = re.compile(
+    r"(?i)\bжк\s*[«\"']?\s*([a-zа-яё0-9][a-zа-яё0-9\s._-]{1,80}?)\s*[»\"'!,.<\n\r]"
 )
 
 logger = logging.getLogger(__name__)
@@ -149,6 +153,7 @@ class AvitoParser(BaseParser):
             t("JKName") or
             t("jk_name")
         )
+        description_jk = self._extract_jk_from_description(t("Description"))
 
         # Try Avito directory lookup
         lookup_info = avito_lookup.get(dev_id) if dev_id else None
@@ -158,6 +163,8 @@ class AvitoParser(BaseParser):
 
         if feed_jk:
             obj.jk_name = feed_jk
+        elif description_jk:
+            obj.jk_name = description_jk
         elif lookup_info:
             obj.jk_name = lookup_info.jk_name
             if lookup_info.house_name and not (t("HouseName") or t("Building") or t("Corpus")):
@@ -247,3 +254,14 @@ class AvitoParser(BaseParser):
                     obj.photos.append(url)
 
         return obj
+
+    @staticmethod
+    def _extract_jk_from_description(description: str) -> str:
+        if not description:
+            return ""
+        text = unescape(description)
+        match = _JK_FROM_DESCRIPTION_RE.search(text)
+        if not match:
+            return ""
+        name = re.sub(r"\s+", " ", match.group(1)).strip(" .,_-")
+        return f"ЖК {name}" if name else ""
