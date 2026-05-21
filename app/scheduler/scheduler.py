@@ -39,6 +39,7 @@ from app.models.sync_log import SyncLog
 from app.models.jk_synonym import JkSynonym
 from app.models.jk_coordinate import JkCoordinate
 from app.models.mapping import Mapping
+from app.models.object import Object, ObjectHistory
 from app.parsers import get_parser
 from app.normalizer import jk_lookup_key, normalize_object
 from app.identifier import IdentificationEngine
@@ -235,6 +236,7 @@ class SyncOrchestrator:
             # Load JK synonyms and coordinates from DB once per cycle
             await self._load_jk_synonyms(session)
             await self._load_jk_coordinates(session)
+            await self._apply_jk_synonyms_to_existing_objects(session)
 
             # Create global sync log
             global_log = SyncLog(status="running")
@@ -316,6 +318,35 @@ class SyncOrchestrator:
         coords = result.scalars().all()
         self._jk_coordinates = {c.jk_name.lower(): (c.latitude, c.longitude) for c in coords}
         logger.info(f"Loaded {len(self._jk_coordinates)} JK coordinates")
+
+    async def _apply_jk_synonyms_to_existing_objects(self, session) -> None:
+        """Apply configured JK synonyms to existing objects before matching new data."""
+        if not self._jk_synonyms:
+            return
+
+        result = await session.execute(select(Object).where(Object.status != "removed"))
+        objects = result.scalars().all()
+        now = datetime.now(timezone.utc)
+        updated = 0
+
+        for obj in objects:
+            canonical = self._jk_synonyms.get(jk_lookup_key(obj.jk_name))
+            if not canonical or obj.jk_name == canonical:
+                continue
+
+            session.add(ObjectHistory(
+                object_id=obj.id,
+                field_name="jk_name",
+                old_value=obj.jk_name,
+                new_value=canonical,
+                changed_at=now,
+            ))
+            obj.jk_name = canonical
+            updated += 1
+
+        if updated:
+            await session.flush()
+            logger.info(f"Applied JK synonyms to {updated} existing objects")
 
     async def _sync_source(
         self, session, source: Source, notifier: TelegramNotifier
